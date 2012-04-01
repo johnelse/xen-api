@@ -118,4 +118,5 @@ let dump_config () =
 	debug "build_number: %s" Version.build_number;
 	debug "hg changeset: %s" Version.hg_id;
 	debug "version: %d.%d" version_major version_minor;
+	debug "SCTX-937 private build which supports database XMLRPC responses > 16MB";
 	(* debug "License filename: %s" !License_file.filename *)
