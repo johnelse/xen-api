@@ -17,6 +17,53 @@ open D
 
 open Listext
 
+module HA_VM = struct
+	type t =
+		(* A VM in the pool database. *)
+		| In_db of API.ref_VM * API.vM_t
+		(* A theoretical VM not in the database, which we are trying to run on a certain host and is using a list of SRs and networks. *)
+		(* Used when we are testing whether a live VM being imported will fit into the HA plan. *)
+		| Not_in_db of API.ref_host * API.ref_SR list * API.ref_network list * API.vM_t
+
+	let of_pair (vm_ref, vm_record) = In_db (vm_ref, vm_record)
+
+	let ref_of = function
+		| In_db (vm_ref, _) -> vm_ref
+		| Not_in_db _ -> failwith "Not_in_db"
+
+	let record_of = function
+		| In_db (_, vm_t) -> vm_t
+		| Not_in_db (_, _, _, vm_t) -> vm_t
+
+	let uuid_of vm = (record_of vm).API.vM_uuid
+
+	let update_record vm vm_record =
+		match vm with
+		| In_db (vm_ref, _) -> In_db (vm_ref, vm_record)
+		| Not_in_db (host, srs, networks, _) -> Not_in_db (host, srs, networks, vm_record)
+
+	let are_equal vm1 vm2 =
+		match vm1, vm2 with
+		| In_db _, In_db _ -> (uuid_of vm1) = (uuid_of vm2)
+		| Not_in_db _, Not_in_db _ -> (uuid_of vm1) = (uuid_of vm2)
+		| _, _ -> false
+
+	let rec mem_assoc vm pairs =
+		match pairs with
+		| [] -> false
+		| (vm', x)::rest ->
+			if are_equal vm vm' then true else mem_assoc vm rest
+
+	let rec assoc vm pairs =
+		match pairs with
+		| [] -> raise Not_found
+		| (vm', x)::rest ->
+			if are_equal vm vm' then x else assoc vm rest
+
+	let mem vm vms =
+		List.exists (fun vm' -> are_equal vm vm') vms
+end
+
 (* Only returns true if the SR is marked as shared, all hosts have PBDs and all PBDs are currently_attached.
    Is used to prevent a non-shared disk being added to a protected VM *)
 let is_sr_properly_shared ~__context ~self =

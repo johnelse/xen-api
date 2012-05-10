@@ -1184,6 +1184,7 @@ let ha_compute_hypothetical_max_host_failures_to_tolerate ~__context ~configurat
 
   let protected_vms = List.map fst (List.filter (fun (vm, priority) -> Helpers.vm_should_always_run true priority) configuration) in
   let protected_vms = List.map (fun vm -> vm, Db.VM.get_record ~__context ~self:vm) protected_vms in
+  let protected_vms = List.map (fun (vm, vm_rec) -> Agility.HA_VM.In_db (vm, vm_rec)) protected_vms in
   Xapi_ha_vm_failover.compute_max_host_failures_to_tolerate ~__context ~protected_vms ()
 
 let ha_compute_vm_failover_plan ~__context ~failed_hosts ~failed_vms = 

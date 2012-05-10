@@ -165,7 +165,8 @@ module AllProtectedVms = Generic.Make(Generic.EncapsulateState(struct
 
 	let extract_output __context _ =
 		Xapi_ha_vm_failover.all_protected_vms ~__context
-			|> List.map (fun (_, vm_rec) -> vm_rec.API.vM_name_label)
+			|> List.map Agility.HA_VM.record_of
+			|> List.map (fun vm_rec -> vm_rec.API.vM_name_label)
 			|> List.sort compare
 
 	let tests = [
@@ -384,8 +385,11 @@ module AssertNewVMPreservesHAPlan = Generic.Make(Generic.EncapsulateState(struct
 		in
 		let vm_ref =
 			load_vm ~__context ~vm ~local_sr ~shared_sr ~local_net ~shared_net in
-		try Either.Right
-			(Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context vm_ref)
+		try
+			let vm_record = Db.VM.get_record ~__context ~self:vm_ref in
+			let ha_vm = Agility.HA_VM.In_db (vm_ref, vm_record) in
+			Either.Right
+				(Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context ha_vm)
 		with e -> Either.Left e
 
 	(* n.b. incoming VMs have ha_always_run = false; otherwise they will be

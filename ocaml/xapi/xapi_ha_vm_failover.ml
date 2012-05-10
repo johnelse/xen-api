@@ -11,21 +11,24 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU Lesser General Public License for more details.
  *)
+open Agility
+open Fun
 open Pervasiveext
 
 module D = Debug.Make(struct let name="xapi_ha_vm_failover" end)
 open D
 
-(* Return a list of (ref, record) pairs for all VMs which are marked as always_run *)
+(* Return a list of HA_VM.t for all VMs which are marked as always_run *)
 let all_protected_vms ~__context = 
-   let vms = Db.VM.get_all_records ~__context in
-   List.filter (fun (_, vm_rec) -> Helpers.vm_should_always_run vm_rec.API.vM_ha_always_run vm_rec.API.vM_ha_restart_priority) vms 
+	Db.VM.get_all_records ~__context
+		|> List.filter (fun (_, vm_rec) -> Helpers.vm_should_always_run vm_rec.API.vM_ha_always_run vm_rec.API.vM_ha_restart_priority)
+		|> List.map (fun (vm_ref, vm_rec) -> HA_VM.In_db (vm_ref, vm_rec))
 
-(* Comparison function which can be used to sort a list of VM ref, record by order *)
-let by_order (vm_ref1,vm_rec1) (vm_ref2,vm_rec2) =
+(* Comparison function which can be used to sort a list of HA_VM.t by order *)
+let by_order vm1 vm2 =
   let negative_high x = if x<0L then Int64.max_int else x in
-  let vm1_order = negative_high (vm_rec1.API.vM_order) in
-  let vm2_order = negative_high (vm_rec2.API.vM_order) in
+  let vm1_order = negative_high (HA_VM.record_of vm1).API.vM_order in
+  let vm2_order = negative_high (HA_VM.record_of vm2).API.vM_order in
   compare vm1_order vm2_order
 
 
@@ -59,39 +62,48 @@ let compute_evacuation_plan ~__context total_hosts remaining_hosts vms_and_snaps
 (** Passed to the planner to reason about other possible configurations, used to block operations which would 
     destroy the HA VM restart plan. *)
 type configuration_change = {
-  old_vms_leaving: (API.ref_host * (API.ref_VM * API.vM_t)) list;   (** existing VMs which are leaving *)
-  old_vms_arriving: (API.ref_host * (API.ref_VM * API.vM_t)) list;  (** existing VMs which are arriving *)
+  old_vms_leaving: (API.ref_host * HA_VM.t) list;   (** existing VMs which are leaving *)
+  old_vms_arriving: (API.ref_host * HA_VM.t) list;  (** existing VMs which are arriving *)
   hosts_to_disable: API.ref_host list;                              (** hosts to pretend to disable *)
   num_failures: int option;                                         (** new number of failures to consider *)
-  new_vms_to_protect: API.ref_VM list;                              (** new VMs to restart *)  
+  new_vms_to_protect: HA_VM.t list;                              (** new VMs to restart *)  
 }
 
 let no_configuration_change = { old_vms_leaving = []; old_vms_arriving = []; hosts_to_disable = []; num_failures = None; new_vms_to_protect = [] }
 
+let string_of_ha_vm = function
+	| HA_VM.In_db (vm_ref, _) -> Printf.sprintf "In_db:%s" (Helpers.short_string_of_ref vm_ref)
+	| HA_VM.Not_in_db (_, _, _, vm_rec) -> Printf.sprintf "Not_in_db:%s" vm_rec.API.vM_name_label
+
 let string_of_configuration_change ~__context (x: configuration_change) = 
   let string_of_host h = Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref h) (Db.Host.get_name_label ~__context ~self:h) in
   Printf.sprintf "configuration_change = { old_vms_leaving = [ %s ]; new_vms_arriving = [ %s ]; hosts_to_disable = [ %s ]; num_failures = %s; new_vms = [ %s ] }"
-    (String.concat "; " (List.map (fun (h, (vm_ref, vm_t)) -> Printf.sprintf "%s %s (%s)" (string_of_host h) (Helpers.short_string_of_ref vm_ref) vm_t.API.vM_name_label) x.old_vms_leaving))
-    (String.concat "; " (List.map (fun (h, (vm_ref, vm_t)) -> Printf.sprintf "%s %s (%s)" (string_of_host h) (Helpers.short_string_of_ref vm_ref) vm_t.API.vM_name_label) x.old_vms_arriving))
+    (String.concat "; " (List.map (fun (h, vm) -> Printf.sprintf "%s %s (%s)" (string_of_host h) (string_of_ha_vm vm) (HA_VM.record_of vm).API.vM_name_label) x.old_vms_leaving))
+    (String.concat "; " (List.map (fun (h, vm) -> Printf.sprintf "%s %s (%s)" (string_of_host h) (string_of_ha_vm vm) (HA_VM.record_of vm).API.vM_name_label) x.old_vms_arriving))
     (String.concat "; " (List.map string_of_host x.hosts_to_disable))
     (Opt.default "no change" (Opt.map string_of_int x.num_failures))
-    (String.concat "; " (List.map Helpers.short_string_of_ref x.new_vms_to_protect))
+    (String.concat "; " (List.map (fun vm -> string_of_ha_vm vm) x.new_vms_to_protect))
 
 (* Deterministic function which chooses a single host to 'pin' a non-agile VM to. Note we don't consider only live hosts:
    otherwise a non-agile VM may 'move' between several hosts which it can actually run on, which is not what we need for
    the planner. *)
-let host_of_non_agile_vm ~__context all_hosts_and_snapshots_sorted (vm, snapshot) =
-  match (List.filter (fun (host, _) -> 
-			try Xapi_vm_helpers.assert_can_boot_here ~__context ~self:vm ~host ~snapshot ~do_memory_check:false (); true
+let host_of_non_agile_vm ~__context all_hosts_and_snapshots_sorted vm =
+	match vm with
+	| HA_VM.In_db (vm_ref, snapshot) -> begin
+		match (List.filter (fun (host, _) ->
+			try Xapi_vm_helpers.assert_can_boot_here ~__context ~self:vm_ref ~host ~snapshot ~do_memory_check:false (); true
 			with _ -> false) all_hosts_and_snapshots_sorted) with
-  | (host, host_snapshot) :: _ -> 
-      (* Multiple hosts are possible because "not agile" means "not restartable on every host". It is 
-	 possible to unplug PBDs so that only a proper subset of hosts (not the singleton element) supports a VM. *)
-      debug "Non-agile VM %s (%s) considered pinned to Host %s (%s)" (Helpers.short_string_of_ref vm) snapshot.API.vM_name_label (Helpers.short_string_of_ref host) host_snapshot.API.host_hostname;
-      [ vm, host ]
-  | [] ->
-      warn "No host could support protected xHA VM: %s (%s)" (Helpers.short_string_of_ref vm) (snapshot.API.vM_name_label);
-      []
+		| (host, host_snapshot) :: _ ->
+			(* Multiple hosts are possible because "not agile" means "not restartable on every host". It is
+			   possible to unplug PBDs so that only a proper subset of hosts (not the singleton element) supports a VM. *)
+			debug "Non-agile VM %s (%s) considered pinned to Host %s (%s)" (string_of_ha_vm vm) snapshot.API.vM_name_label (Helpers.short_string_of_ref host) host_snapshot.API.host_hostname;
+			[ vm, host ]
+		| [] ->
+			warn "No host could support protected xHA VM: %s (%s)" (string_of_ha_vm vm) (snapshot.API.vM_name_label);
+			[]
+	end
+	| HA_VM.Not_in_db (host, _, _, _) ->
+		[vm, host]
 
 let get_live_set ~__context =
 	let all_hosts = Db.Host.get_all_records ~__context in
@@ -132,24 +144,25 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 	let vms_to_ensure_running = all_protected_vms in
 
 	(* Add in any extra VMs which aren't already protected *)
-	let extra_vms = List.map (fun vm -> vm, Db.VM.get_record ~__context ~self:vm) change.new_vms_to_protect in
-	let vms_to_ensure_running = vms_to_ensure_running @ extra_vms in
+	let vms_to_ensure_running = vms_to_ensure_running @ change.new_vms_to_protect in
 
 	(* For each leaving VM unset the resident_on (so 'is_accounted_for' returns false) *)
 	(* For each arriving VM set the resident_on again (so 'is_accounted_for' returns true) *)
 	(* For each arriving VM make sure we use the new VM configuration (eg new memory size) *)
 	(* NB host memory is adjusted later *)
-	let vms_to_ensure_running = List.map (fun (vm_ref, vm_t) ->
-		let leaving = List.filter (fun (_, (vm, _)) -> vm_ref = vm) change.old_vms_leaving in
-		let leaving_host = List.map (fun (host, (vm, _)) -> vm, host) leaving in
-		(* let leaving_snapshots = List.map snd leaving in *)
-		let arriving = List.filter (fun (_, (vm, _)) -> vm_ref = vm) change.old_vms_arriving in
-		let arriving_host = List.map (fun (host, (vm, _)) -> vm, host) arriving in
-		let arriving_snapshots = List.map snd arriving in
-		match List.mem_assoc vm_ref leaving_host, List.mem_assoc vm_ref arriving_host with
-			| _, true -> vm_ref, { (List.assoc vm_ref arriving_snapshots) with API.vM_resident_on = List.assoc vm_ref arriving_host }
-			| true, false -> vm_ref, { vm_t with API.vM_resident_on = Ref.null }
-			| _, _ -> vm_ref, vm_t)
+	let vms_to_ensure_running = List.map (fun vm ->
+		let open HA_VM in
+		let leaving = List.filter (fun (_, leaving_vm) -> are_equal vm leaving_vm) change.old_vms_leaving in
+		let arriving = List.filter (fun (_, arriving_vm) -> are_equal vm arriving_vm ) change.old_vms_arriving in
+		let is_leaving = List.exists (fun (_, leaving_vm) -> are_equal vm leaving_vm) leaving in
+		let is_arriving = List.exists (fun (_, arriving_vm) -> are_equal vm arriving_vm) arriving in
+		match is_leaving, is_arriving with
+			| _, true ->
+				let host = fst (List.find (fun (_, arriving_vm) -> are_equal vm arriving_vm) arriving) in
+				update_record vm {(record_of vm) with API.vM_resident_on = host}
+			| true, false ->
+				update_record vm {(record_of vm) with API.vM_resident_on = Ref.null}
+			| _, _ -> vm)
 		vms_to_ensure_running in
 
 	let all_hosts_and_snapshots = Db.Host.get_all_records ~__context in
@@ -169,27 +182,43 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 	let live_hosts = List.map fst live_hosts_and_snapshots (* and dead_hosts = List.map fst dead_hosts_and_snapshots *) in
 
 	(* Any deterministic ordering is fine here: *)
-	let vms_to_ensure_running = List.sort (fun (_, a) (_, b) -> compare a.API.vM_uuid b.API.vM_uuid) vms_to_ensure_running in
+	let vms_to_ensure_running =
+		List.sort
+			(fun a b -> compare (HA_VM.record_of a).API.vM_uuid (HA_VM.record_of b).API.vM_uuid)
+			vms_to_ensure_running
+	in
 
-	let agile_vms, not_agile_vms = Agility.partition_vm_ps_by_agile ~__context vms_to_ensure_running in
+	let agile_vms, not_agile_vms = Agility.partition_vm_ps_by_agile ~__context
+		(Listext.List.filter_map
+			(function
+				| HA_VM.In_db (vm_ref, vm_record) -> Some (vm_ref, vm_record)
+				| HA_VM.Not_in_db _ -> None)
+			vms_to_ensure_running)
+		|> (fun (agile_vms, not_agile_vms) ->
+				List.map HA_VM.of_pair agile_vms,
+				List.map HA_VM.of_pair not_agile_vms)
+	in
 
 	(* If a VM is marked as resident on a live_host then it will already be accounted for in the host's current free memory. *)
 	let vm_accounted_to_host vm =
-		let vm_t = List.assoc vm vms_to_ensure_running in
-		if List.mem vm_t.API.vM_resident_on live_hosts
-		then Some vm_t.API.vM_resident_on
-		else
-			let scheduled = Db.VM.get_scheduled_to_be_resident_on ~__context ~self:vm in
-			if List.mem scheduled live_hosts
-			then Some scheduled else None in
+		match vm with
+		| HA_VM.In_db (vm_ref, vm_record) ->
+			if List.mem vm_record.API.vM_resident_on live_hosts
+			then Some vm_record.API.vM_resident_on
+			else
+				let scheduled = Db.VM.get_scheduled_to_be_resident_on ~__context ~self:vm_ref in
+				if List.mem scheduled live_hosts
+				then Some scheduled else None
+		| HA_VM.Not_in_db (host, _, _, _) -> Some host
+	in
 
-	let string_of_vm vm = Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref vm) (List.assoc vm vms_to_ensure_running).API.vM_name_label in
+	let string_of_vm vm = Printf.sprintf "%s (%s)" (string_of_ha_vm vm) (HA_VM.record_of vm).API.vM_name_label in
 	let string_of_host host =
 		let name = (List.assoc host all_hosts_and_snapshots).API.host_name_label in
 		Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref host) name in
 	let string_of_plan p = String.concat "; " (List.map (fun (vm, host) -> Printf.sprintf "%s -> %s" (string_of_vm vm) (string_of_host host)) p) in
 
-	debug "Protected VMs: [ %s ]" (String.concat "; " (List.map (fun (vm, _) -> string_of_vm vm) vms_to_ensure_running));
+	debug "Protected VMs: [ %s ]" (String.concat "; " (List.map (fun vm -> string_of_vm vm) vms_to_ensure_running));
 
 	(* Current free memory on all hosts (does not include any for *offline* protected VMs ie those for which (vm_accounted_to_host vm) 
 	   returns None) Also apply the supplied counterfactual-reasoning changes (if any) *)
@@ -200,24 +229,34 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 		let currently_free = Memory_check.host_compute_free_memory_with_policy~__context summary Memory_check.Static_max in
 		let sum = List.fold_left Int64.add 0L in
 		let arriving = List.filter (fun (h, _) -> h = host) change.old_vms_arriving in
-		let arriving_memory = sum (List.map (fun (_, (vm_ref, snapshot)) ->
-			total_memory_of_vm ~__context (if not $ Db.VM.get_is_control_domain ~__context ~self:vm_ref
+		let arriving_memory = sum (List.map (fun (_, vm) ->
+			let snapshot = HA_VM.record_of vm in
+			total_memory_of_vm ~__context (if not snapshot.API.vM_is_control_domain
 			then Memory_check.Static_max
 			else Memory_check.Dynamic_max) snapshot) arriving) in
 		let leaving = List.filter (fun (h, _) -> h = host) change.old_vms_leaving in
-		let leaving_memory = sum (List.map (fun (_, (vm_ref, snapshot)) -> total_memory_of_vm ~__context
-			(if  not $ Db.VM.get_is_control_domain ~__context ~self:vm_ref
+		let leaving_memory = sum (List.map (fun (_, vm) ->
+			let snapshot = HA_VM.record_of vm in
+			total_memory_of_vm ~__context (if not snapshot.API.vM_is_control_domain
 			then Memory_check.Static_max
 			else Memory_check.Dynamic_max) snapshot) leaving) in
 		host, Int64.sub (Int64.add currently_free leaving_memory) arriving_memory) live_hosts in
 
 	(* Memory required by all protected VMs *)
-	let vms_and_memory = List.map (fun (vm, snapshot) -> vm, total_memory_of_vm ~__context Memory_check.Static_max snapshot) vms_to_ensure_running in
+	let vms_and_memory =
+		List.map
+			(fun vm -> vm, total_memory_of_vm ~__context Memory_check.Static_max (HA_VM.record_of vm))
+			vms_to_ensure_running
+	in
 
 	(* For each non-agile VM, consider it pinned it to one host (even if it /could/ run on several). Note that if it is
 	   actually running somewhere else (very strange semi-agile situation) then it will be counted as overhead there and
 	   plans will be made for it running on the host we choose. *)
-	let pinned = List.concat (List.map (host_of_non_agile_vm ~__context all_hosts_and_snapshots) not_agile_vms) in
+	let pinned = List.concat
+		(List.map
+			(host_of_non_agile_vm ~__context all_hosts_and_snapshots)
+			not_agile_vms)
+	in
 
 	(* The restart plan for offline non-agile VMs is just the map VM -> pinned Host *)
 	let non_agile_restart_plan = List.filter (fun (vm, _) -> vm_accounted_to_host vm = None) pinned in
@@ -229,9 +268,9 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 
 	(* Now that we've considered the overhead of the non-agile (pinned) VMs, we can perform some binpacking of the agile VMs. *)
 
-	let agile_vms_and_memory = List.map (fun (vm, _) -> vm, List.assoc vm vms_and_memory) agile_vms in
+	let agile_vms_and_memory = List.map (fun vm -> vm, HA_VM.assoc vm vms_and_memory) agile_vms in
 	(* Compute the current placement for all agile VMs. VMs which are powered off currently are placed nowhere *)
-	let agile_vm_accounted_to_host = List.map (fun (vm, snapshot) -> vm, vm_accounted_to_host vm) agile_vms in
+	let agile_vm_accounted_to_host = List.map (fun vm -> vm, vm_accounted_to_host vm) agile_vms in
 	(* All these hosts are live and the VMs are running (or scheduled to be running): *)
 	let agile_vm_placement = List.concat (List.map (fun (vm, host) -> match host with Some h -> [ vm, h ] | _ -> []) agile_vm_accounted_to_host) in
 	(* These VMs are not running on any host (either in real life or only hypothetically) *)
@@ -250,7 +289,7 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 
 	let vms_restarted = List.map fst agile_restart_plan in
 	(* List the protected VMs which are not already running and weren't in the restart plan *)
-	let vms_not_restarted = List.map fst (List.filter (fun (vm, _) -> vm_accounted_to_host vm = None && not(List.mem vm vms_restarted)) vms_to_ensure_running) in
+	let vms_not_restarted = List.filter (fun vm -> vm_accounted_to_host vm = None && not(HA_VM.mem vm vms_restarted)) vms_to_ensure_running in
 	if vms_not_restarted <> []
 	then warn "Some protected VMs could not be restarted: [ %s ]" (String.concat "; " (List.map string_of_vm vms_not_restarted));
 
@@ -293,8 +332,8 @@ let plan_for_n_failures ~__context ~all_protected_vms ?live_set ?(change = no_co
     end else begin
       debug "plan_for_n_failures config = %s" 
 	(Binpack.string_of_configuration 
-	   (fun x -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref x) (Db.Host.get_hostname ~__context ~self:x))
-	   (fun x -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref x) (Db.VM.get_name_label ~__context ~self:x)) config);
+	   (fun host -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref host) (Db.Host.get_hostname ~__context ~self:host))
+	   (fun vm -> Printf.sprintf "%s (%s)" (string_of_ha_vm vm) (HA_VM.record_of vm).API.vM_name_label) config);
       Binpack.check_configuration config;
       let h = Binpack.choose_heuristic config in
       match h.Binpack.plan_always_possible config, non_agile_protected_vms_exist with
@@ -595,30 +634,30 @@ let restart_auto_run_vms ~__context live_set n =
 				if not plan_is_complete then begin
 					(* If the Pool is overcommitted the restart priority will make the difference between a VM restart or not,
 					   while if we're undercommitted the restart priority only affects the timing slightly. *)
-					let all = List.filter (fun (_, r) -> r.API.vM_power_state = `Halted) all_protected_vms in
+					let all = List.filter (fun vm -> (HA_VM.record_of vm).API.vM_power_state = `Halted) all_protected_vms in
 					let all = List.sort by_order all in
 					warn "Failed to find plan to restart all protected VMs: falling back to simple VM.start in priority order";
-					List.map (fun (vm, _) -> vm, restart_vm vm ()) all
+					List.map (fun vm -> vm, restart_vm (HA_VM.ref_of vm) ()) all
 				end else begin
 					(* Walk over the VMs in priority order, starting each on the planned host *)
-					let all = List.sort by_order (List.map (fun (vm, _) -> vm, Db.VM.get_record ~__context ~self:vm) plan) in
-					List.map (fun (vm, _) -> 
-						vm, (if List.mem_assoc vm plan
-						then restart_vm vm ~host:(List.assoc vm plan) ()
+					let all = List.sort by_order (List.map fst plan) in
+					List.map (fun vm ->
+						vm, (if HA_VM.mem_assoc vm plan
+						then restart_vm (HA_VM.ref_of vm) ~host:(HA_VM.assoc vm plan) ()
 						else false)) all
 				end in
 			(* Perform one final restart attempt of any that weren't started. *)
 			let started = List.map (fun (vm, started) -> match started with
 				| true -> vm, true
-				| false -> vm, restart_vm vm ()) started in
+				| false -> vm, restart_vm (HA_VM.ref_of vm) ()) started in
 			(* Send an alert for any failed VMs *)
-			List.iter (fun (vm, started) -> if not started then consider_sending_failed_alert_for vm) started;
+			List.iter (fun (vm, started) -> if not started then consider_sending_failed_alert_for (HA_VM.ref_of vm)) started;
 
 			(* Forget about previously failed VMs which have gone *)
 			let vms_we_know_about = List.map fst started in
 			let gc_table tbl = 
 				let vms_in_table = Hashtbl.fold (fun vm _ acc -> vm :: acc) tbl [] in
-				List.iter (fun vm -> if not(List.mem vm vms_we_know_about) then (debug "Forgetting VM: %s" (Ref.string_of vm); Hashtbl.remove tbl vm)) vms_in_table in
+				List.iter (fun vm -> if not(List.mem vm (List.map HA_VM.ref_of vms_we_know_about)) then (debug "Forgetting VM: %s" (Ref.string_of vm); Hashtbl.remove tbl vm)) vms_in_table in
 			gc_table last_start_attempt;
 			gc_table restart_failed;
 			
