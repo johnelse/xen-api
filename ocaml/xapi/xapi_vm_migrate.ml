@@ -226,6 +226,7 @@ type mirror_record = {
   mr_remote_xenops_locator : string;
   mr_remote_vdi_reference : API.ref_VDI;
   mr_local_vdi_reference : API.ref_VDI;
+  mr_remote_sr_reference : API.ref_SR;
 }
 
 (* If VM's suspend_SR is set to the local SR, it won't be visible to
@@ -265,7 +266,9 @@ let inter_pool_metadata_transfer ~__context ~remote ~vm ~vdi_map ~vif_map ~dry_r
   List.iter (fun mirror_record ->
       let vdi = mirror_record.mr_local_vdi_reference in
       Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key;
-      Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key ~value:(Ref.string_of mirror_record.mr_remote_vdi_reference)) vdi_map;
+      Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key ~value:(Ref.string_of mirror_record.mr_remote_vdi_reference);
+      Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key;
+      Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key ~value:(Ref.string_of mirror_record.mr_remote_sr_reference)) vdi_map;
 
   List.iter (fun (vif,network) ->
       Db.VIF.remove_from_other_config ~__context ~self:vif ~key:Constants.storage_migrate_vif_map_key;
@@ -281,7 +284,9 @@ let inter_pool_metadata_transfer ~__context ~remote ~vm ~vdi_map ~vif_map ~dry_r
     (fun () ->
        (* Make sure we clean up the remote VDI and VIF mapping keys. *)
        List.iter
-         (fun mr -> Db.VDI.remove_from_other_config ~__context ~self:mr.mr_local_vdi_reference ~key:Constants.storage_migrate_vdi_map_key)
+         (fun mr ->
+           Db.VDI.remove_from_other_config ~__context ~self:mr.mr_local_vdi_reference ~key:Constants.storage_migrate_vdi_map_key;
+           Db.VDI.remove_from_other_config ~__context ~self:mr.mr_local_vdi_reference ~key:Constants.storage_migrate_sr_map_key)
          vdi_map;
        List.iter
          (fun (vif, _) -> Db.VIF.remove_from_other_config ~__context ~self:vif ~key:Constants.storage_migrate_vif_map_key)
@@ -545,7 +550,8 @@ let vdi_copy_fun __context dbg vdi_map remote is_intra_pool remote_vdis so_far t
                          mr_local_xenops_locator = vconf.xenops_locator;
                          mr_remote_xenops_locator = Xapi_xenops.xenops_vdi_locator_of_strings dest_sr_uuid remote_vdi;
                          mr_local_vdi_reference = vconf.vdi;
-                         mr_remote_vdi_reference = remote_vdi_reference; }) in
+                         mr_remote_vdi_reference = remote_vdi_reference;
+                         mr_remote_sr_reference = dest_sr_ref; }) in
   try
     let result = continuation mirror_record in
     
@@ -959,9 +965,8 @@ let assert_can_migrate  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
       Cpuid_helpers.assert_vm_is_compatible ~__context ~vm ~host:remote.dest_host
         ~remote:(remote.rpc, remote.session) ();
 
-    (* Ignore vdi_map for now since we won't be doing any mirroring. *)
     try
-      assert (inter_pool_metadata_transfer ~__context ~remote ~vm ~vdi_map:[] ~vif_map ~dry_run:true ~live:true ~copy = [])
+      assert (inter_pool_metadata_transfer ~__context ~remote ~vm ~vdi_map ~vif_map ~dry_run:true ~live:true ~copy = [])
     with Xmlrpc_client.Connection_reset ->
       raise (Api_errors.Server_error(Api_errors.cannot_contact_host, [remote.remote_ip]))
 
