@@ -106,6 +106,7 @@ type mirror_record = {
 	mr_local_xenops_locator : string;
 	mr_remote_xenops_locator : string;
 	mr_remote_vdi_reference : API.ref_VDI;
+	mr_remote_sr_reference : API.ref_SR;
 }
 
 let get_snapshots_vbds ~__context ~vm =
@@ -140,7 +141,9 @@ let inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_addr
 		(fun () ->
 			(* Make sure we clean up the remote VDI mapping keys. *)
 			List.iter
-				(fun (vdi, _) -> Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key)
+				(fun (vdi, _) ->
+					Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key;
+					Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key)
 				vdi_map)
 
 let migrate_send  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
@@ -293,7 +296,8 @@ let migrate_send  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 								mr_sr = sr;
 								mr_local_xenops_locator = xenops_locator;
 								mr_remote_xenops_locator = Xapi_xenops.xenops_vdi_locator_of_strings dest_sr remote_vdi;
-								mr_remote_vdi_reference = remote_vdi_reference; }) in
+								mr_remote_vdi_reference = remote_vdi_reference;
+								mr_remote_sr_reference = dest_sr_ref; }) in
 
 		let snapshots_map = List.map (vdi_copy_fun true) snapshots_vdis in
 		let vdi_map = List.map (vdi_copy_fun false) vdis in
@@ -304,9 +308,15 @@ let migrate_send  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		
 		List.iter (fun (vdi,mirror_record) ->
 			let other_config = Db.VDI.get_other_config ~__context ~self:vdi in
+			(* Update the remote VDI ref key. *)
 			if List.mem_assoc Constants.storage_migrate_vdi_map_key other_config then
 				Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key;
-			Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key ~value:(Ref.string_of mirror_record.mr_remote_vdi_reference)) (snapshots_map @ vdi_map);
+			Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key ~value:(Ref.string_of mirror_record.mr_remote_vdi_reference);
+			(* Update the remote SR ref key. *)
+			if List.mem_assoc Constants.storage_migrate_sr_map_key other_config then
+				Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key;
+			Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key ~value:(Ref.string_of mirror_record.mr_remote_sr_reference))
+			(snapshots_map @ vdi_map);
 
 		let xenops_vif_map = List.map (fun (vif,network) ->
 			let bridge = Xenops_interface.Network.Local (XenAPI.Network.get_bridge remote_rpc session_id network) in
@@ -430,8 +440,14 @@ let assert_can_migrate  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		let force = try bool_of_string (List.assoc "force" options) with _ -> false in
 		if (not force) && live then Xapi_vm_helpers.assert_vm_is_compatible ~__context ~vm ~host
 	| `cross_pool remote_rpc ->
-		(* Ignore vdi_map for now since we won't be doing any mirroring. *)
-		inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_address ~vm ~vdi_map:[] ~dry_run:true ~live
+		(* Update the remote SR ref key. *)
+		List.iter (fun (vdi, sr) ->
+			let other_config = Db.VDI.get_other_config ~__context ~self:vdi in
+			if List.mem_assoc Constants.storage_migrate_sr_map_key other_config then
+				Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key;
+			Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_sr_map_key ~value:(Ref.string_of sr))
+			vdi_map;
+		inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_address ~vm ~vdi_map ~dry_run:true ~live
 
 (* Handling migrations from pre-Tampa hosts *)
 
