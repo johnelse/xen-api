@@ -6,6 +6,7 @@ OCAMLINCLUDES = \
 	../xapi \
 	../idl \
 	../idl/ocaml_backend \
+	../autogen \
 
 OCAML_LIBS = \
 	../fhs \
@@ -20,5 +21,7 @@ OCAML_LIBS = \
 
 OCAML_OBJS = \
 	../idl/api_lowlevel \
+	test_common \
 
 OCamlProgram(suite, suite $(OCAML_OBJS) )
+OCamlProgram(test_big_database, test_big_database $(OCAML_OBJS) )
