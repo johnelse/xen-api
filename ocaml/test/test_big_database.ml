@@ -169,6 +169,8 @@ let time_it name f =
 	print_endline (Printf.sprintf "'%s' took %f seconds" name (end_time -. start_time));
 	result
 
+let use_optimisations = true
+
 let test_big_database () =
 	let db = MockDatabase.make () in
 	let __context = MockContext.make ~database:db "Mock context" in
@@ -192,8 +194,17 @@ let test_big_database () =
 			~count:12000 in
 		(hosts, pool, sr, pbds, vms, vdis))
 	in
+	let vbds = [] in
+	let srs = [sr] in
+	(* Update allowed operations on all VDIs in the database. *)
 	time_it "Updating allowed_operations on all VDIs" (fun () ->
-		List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis);
+		if use_optimisations then begin
+			let sr_records = List.map (fun sr -> (sr, Db.SR.get_record_internal ~__context ~self:sr)) srs in
+			let pbd_records = List.map (fun pbd -> (pbd, Db.PBD.get_record ~__context ~self:pbd)) pbds in
+			let vbd_records = List.map (fun vbd -> (vbd, Db.VBD.get_record_internal ~__context ~self:vbd)) vbds in
+			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations_internal ~__context ~self:vdi ~sr_records ~pbd_records ~vbd_records) vdis;
+		end else
+			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis);
 	ignore (hosts, pool, sr, pbds, vms, vdis)
 
 let _ = test_big_database ()
