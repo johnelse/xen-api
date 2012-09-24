@@ -232,6 +232,9 @@ let test_big_database () =
 			let vbd_records = List.map (fun vbd -> (vbd, Db.VBD.get_record_internal ~__context ~self:vbd)) vbds in
 			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations_internal ~__context ~self:vdi ~sr_records ~pbd_records ~vbd_records) vdis;
 		end else
-			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis)
+			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis);
+	(* Update allowed operations on all VMs in the database. *)
+	time_it "Updating allowed_operations on all VMs" (fun () ->
+		List.iter (fun vm -> Xapi_vm_lifecycle.update_allowed_operations ~__context ~self:vm) vms)
 
 let _ = test_big_database ()
