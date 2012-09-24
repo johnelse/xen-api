@@ -146,6 +146,20 @@ let create_vdi ~__context ~sr ~name_label =
 		~metadata_latest:false;
 	ref
 
+let create_vbd ~__context ~vm ~vdi ~userdevice =
+	let ref = Ref.make () in
+	let uuid = Uuid.string_of_uuid (Uuid.make_uuid ()) in
+	Db.VBD.create ~__context ~ref ~uuid
+		~current_operations:[] ~allowed_operations:[]
+		~storage_lock:false ~vM:vm ~vDI:vdi ~userdevice
+		~device:"" ~bootable:false ~mode:`RW ~_type:`Disk ~unpluggable:true
+		~empty:false ~reserved:false ~qos_algorithm_type:""
+		~qos_algorithm_params:[] ~qos_supported_algorithms:[]
+		~currently_attached:false ~status_code:Int64.zero
+		~status_detail:"" ~runtime_properties:[] ~other_config:[]
+		~metrics:Ref.null;
+	ref
+
 let create_multiple ~create_one ~count =
 	let things = ref [] in
 	for n = 1 to count do
@@ -161,6 +175,19 @@ let create_vms_on_host ~__context ~host ~count =
 			~name_label:(Printf.sprintf "%s_%d" host_name_label n))
 		~count
 
+(* Take a list of VMs and a list of VDIs - create a VBD for the *)
+(* first n pairs, where n is the length of the shortest list. *)
+let link_vms_and_vdis ~__context ~vms ~vdis =
+	let rec link_vms_and_vdis' ~vms ~vdis ~vbds_created =
+		match vms, vdis with
+		| (vm::other_vms), (vdi::other_vdis) ->
+			let vbd = create_vbd ~__context ~vm ~vdi ~userdevice:"0" in
+			link_vms_and_vdis' ~vms:other_vms
+				~vdis:other_vdis ~vbds_created:(vbd::vbds_created)
+		| _, _ -> vbds_created
+	in
+	link_vms_and_vdis' ~vms ~vdis ~vbds_created:[]
+
 let time_it name f =
 	print_endline (Printf.sprintf "Starting task '%s'" name);
 	let start_time = Unix.gettimeofday () in
@@ -174,7 +201,7 @@ let use_optimisations = true
 let test_big_database () =
 	let db = MockDatabase.make () in
 	let __context = MockContext.make ~database:db "Mock context" in
-	let hosts, pool, sr, pbds, vms, vdis = time_it "Creating dummy database" (fun () ->
+	let hosts, pool, sr, pbds, vms, vdis, vbds = time_it "Creating dummy database" (fun () ->
 		(* Create 16 hosts. *)
 		let hosts = create_multiple
 			~create_one:(fun n -> create_host ~__context ~name_label:(Printf.sprintf "host_%d" n))
@@ -192,9 +219,10 @@ let test_big_database () =
 		let vdis = create_multiple
 			~create_one:(fun n -> create_vdi ~__context ~sr ~name_label:(Printf.sprintf "vdi_%d" n))
 			~count:12000 in
-		(hosts, pool, sr, pbds, vms, vdis))
+		(* Connect each VM to a disk. *)
+		let vbds = link_vms_and_vdis ~__context ~vms ~vdis in
+		(hosts, pool, sr, pbds, vms, vdis, vbds))
 	in
-	let vbds = [] in
 	let srs = [sr] in
 	(* Update allowed operations on all VDIs in the database. *)
 	time_it "Updating allowed_operations on all VDIs" (fun () ->
@@ -204,7 +232,6 @@ let test_big_database () =
 			let vbd_records = List.map (fun vbd -> (vbd, Db.VBD.get_record_internal ~__context ~self:vbd)) vbds in
 			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations_internal ~__context ~self:vdi ~sr_records ~pbd_records ~vbd_records) vdis;
 		end else
-			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis);
-	ignore (hosts, pool, sr, pbds, vms, vdis)
+			List.iter (fun vdi -> Xapi_vdi.update_allowed_operations ~__context ~self:vdi) vdis)
 
 let _ = test_big_database ()
