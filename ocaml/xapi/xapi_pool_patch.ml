@@ -43,8 +43,7 @@ exception Bad_patch_info
 
 let rm = "/bin/rm"
 
-(* Host patches are directories are placed here: *)
-let patch_dir = "/var/patch"
+let patch_applied_dir = Filename.concat Fhs.varpatchdir "applied"
 
 let xensource_patch_key = "NERDNTUzMDMwRUMwNDFFNDI4N0M4OEVCRUFEMzlGOTJEOEE5REUyNg=="
 let test_patch_key = "RjgyNjVCRURDMzcxMjgzNkQ1NkJENjJERDQ2MDlGOUVDQzBBQkZENQ=="
@@ -224,8 +223,8 @@ let pool_patch_upload_handler (req: Request.t) s _ =
       
       debug "Patch Upload Handler - Authenticated...";
 
-      let _ = Unixext.mkdir_safe patch_dir 0o755 in
-      let new_path = patch_dir ^ "/" ^ (Uuid.to_string (Uuid.make_uuid ())) in
+      let _ = Unixext.mkdir_safe Fhs.varpatchdir 0o755 in
+      let new_path = Filename.concat Fhs.varpatchdir (Uuid.to_string (Uuid.make_uuid ())) in
       let task_id = Context.get_task_id __context in
       begin
        
@@ -460,7 +459,7 @@ let get_patch_to_local ~__context ~self =
 				 with_transport transport
 					 (with_http request
 						 (fun (response, fd) ->
-							 let _ = Unixext.mkdir_safe patch_dir 0o755 in
+							 let _ = Unixext.mkdir_safe Fhs.varpatchdir 0o755 in
 							 read_in_and_check_patch length fd path
 						 )
 					 )
@@ -488,8 +487,6 @@ let patch_is_applied_to ~__context ~patch ~host =
   let result = Db.Host_patch.get_records_where ~__context ~expr in
     (List.length result) > 0
 
-let patch_applied_dir = "/var/patch/applied"
-
 let write_patch_applied ~__context ~self = 
   (* This will write a small file containing xml to /var/patch/applied/ detailing what patches have been applied*)
   (* This allows the agent to remember what patches have been applied across pool-ejects *)
@@ -499,7 +496,7 @@ let write_patch_applied ~__context ~self =
       | Success(output, _) ->
           begin
             let uuid = Db.Pool_patch.get_uuid ~__context ~self in
-            let path = patch_applied_dir ^ "/" ^ uuid in
+            let path = Filename.concat patch_applied_dir uuid in
               Unixext.with_file path [ Unix.O_WRONLY; Unix.O_CREAT ] 0o440
                 (fun fd -> let (_: int) = Unix.write fd output 0 (String.length output) in ())
           end
