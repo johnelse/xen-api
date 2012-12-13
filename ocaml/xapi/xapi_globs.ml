@@ -664,6 +664,8 @@ let pending_task_timeout = ref 86400. (* 24 hrs in seconds *)
 
 let completed_task_timeout = ref 3900. (* 65 mins *)
 
+let probation_task_timeout = ref 900. (* 15 minutes *)
+
 (* Don't reboot a domain which crashes too quickly: *)
 let minimum_time_between_bounces = ref 120. (* 2 minutes *)
 
@@ -761,6 +763,8 @@ let xapi_globs_spec =
 	  Config.Set_float pending_task_timeout;
 	  "completed_task_timeout",
 	  Config.Set_float completed_task_timeout;
+	  "probation_task_timeout",
+	  Config.Set_float probation_task_timeout;
 	  "minimum_time_between_bounces",
 	  Config.Set_float minimum_time_between_bounces;
 	  "minimum_time_between_reboot_with_no_added_delay",
