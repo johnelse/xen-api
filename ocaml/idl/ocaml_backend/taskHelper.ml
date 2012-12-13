@@ -121,7 +121,10 @@ let add_to_other_config ~__context key value =
 
 let set_progress ~__context value =
 	operate_on_db_task ~__context
-		(fun self -> Db_actions.DB_Action.Task.set_progress ~__context ~self ~value)
+		(fun self ->
+			Db_actions.DB_Action.Task.set_last_progress_update ~__context
+				~self ~value:(Date.of_float (Unix.time ()));
+			Db_actions.DB_Action.Task.set_progress ~__context ~self ~value)
 
 let set_external_pid ~__context pid =
 	operate_on_db_task ~__context
