@@ -206,8 +206,7 @@ let copy_vdi ~__context vdi_src vdi_dst =
 
 		let progress_cb progress =
 			TaskHelper.exn_if_cancelling ~__context;
-			TaskHelper.operate_on_db_task ~__context
-				(fun self -> Db.Task.set_progress ~__context ~self ~value:progress) in
+			TaskHelper.set_progress ~__context progress in
 		try
 			with_block_attached_device __context rpc session_id vdi_src `RO
 				(fun device_src ->

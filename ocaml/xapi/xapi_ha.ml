@@ -1472,7 +1472,6 @@ let enable __context heartbeat_srs configuration =
 		ignore(attach_metadata_vdi ~__context database_vdi);
 
 		(* To make a progress bar we keep track of the total API calls *)
-		let task = Context.get_task_id __context in
 		let total_calls = List.length hosts * 3 in
 		let count_call =
 			let task_m = Mutex.create () in
@@ -1481,7 +1480,7 @@ let enable __context heartbeat_srs configuration =
 				Mutex.execute task_m
 					(fun () ->
 						incr call_count;
-						Db.Task.set_progress ~__context ~self:task ~value:(float_of_int !call_count /. (float_of_int total_calls))
+						TaskHelper.set_progress ~__context (float_of_int !call_count /. (float_of_int total_calls))
 					) in
 
 		Helpers.call_api_functions ~__context

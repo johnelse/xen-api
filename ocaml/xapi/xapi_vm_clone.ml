@@ -42,7 +42,7 @@ let wait_for_subtask ?progress_minmax ~__context task =
 	let process_copy_task task_rec =
 		(* Update progress *)
 		let myprogress = may (fun (min, max) -> min +. (max -. min) *. task_rec.API.task_progress) progress_minmax in
-		maybe (fun value -> Db_actions.DB_Action.Task.set_progress ~__context ~self:main_task ~value) myprogress;
+		maybe (fun value -> TaskHelper.set_progress ~__context value) myprogress;
 
 		(* See if it has finished *)
 		match task_rec.API.task_status with
