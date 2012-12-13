@@ -32,10 +32,11 @@ let make ~__context ~http_other_config ?(description="") ?session_id ?subtask_of
     | Some task_id when not (Ref.is_dummy task_id) -> task_id
     | _e -> Ref.null
   in
+  let now = Date.of_float (Unix.time ())in
   let (_ : unit) = Db_actions.DB_Action.Task.create
     ~ref
     ~__context
-    ~created:(Date.of_float (Unix.time()))
+    ~created:now
     ~finished:(Date.of_float 0.0)
     ~current_operations:[]
     ~_type:"<none/>"
@@ -49,7 +50,8 @@ let make ~__context ~http_other_config ?(description="") ?session_id ?subtask_of
     ~stunnelpid:(-1L) ~forwarded:false ~forwarded_to:Ref.null
     ~uuid:uuid_str ~externalpid:(-1L)
     ~subtask_of:subtaskid_of
-    ~other_config:(List.map (fun (k, v) -> "http:" ^ k, v) http_other_config)  in
+    ~other_config:(List.map (fun (k, v) -> "http:" ^ k, v) http_other_config)
+    ~last_progress_update:now in
   ref, uuid
 
 let rbac_assert_permission_fn = ref None (* required to break dep-cycle with rbac.ml *)

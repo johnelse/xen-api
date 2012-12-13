@@ -18,7 +18,7 @@ open Datamodel_types
 (* IMPORTANT: Please bump schema vsn if you change/add/remove a _field_.
               You do not have to bump vsn if you change/add/remove a message *)
 let schema_major_vsn = 5
-let schema_minor_vsn = 66
+let schema_minor_vsn = 67
 
 (* Historical schema versions just in case this is useful later *)
 let rio_schema_major_vsn = 5
@@ -3393,7 +3393,8 @@ let task =
       field ~in_product_since:rel_miami ~default_value:(Some (VMap [])) ~ty:(Map(String, String)) "other_config" "additional configuration" ~map_keys_roles:[("applies_to",(_R_VM_OP));("XenCenterUUID",(_R_VM_OP));("XenCenterMeddlingActionTitle",(_R_VM_OP))];
       (* field ~ty:(Set(Ref _alert)) ~in_product_since:rel_miami ~qualifier:DynamicRO "alerts" "all alerts related to this task"; *)
       field ~qualifier:DynamicRO ~in_product_since:rel_orlando ~default_value:(Some (VRef "")) ~ty:(Ref _task) "subtask_of" "Ref pointing to the task this is a substask of.";
-      field ~qualifier:DynamicRO ~in_product_since:rel_orlando ~ty:(Set (Ref _task)) "subtasks"   "List pointing to all the substasks."; 
+      field ~qualifier:DynamicRO ~in_product_since:rel_orlando ~ty:(Set (Ref _task)) "subtasks"   "List pointing to all the substasks.";
+      field ~qualifier:DynamicRO ~in_product_since:rel_sarasota ~ty:DateTime "last_progress_update" "The time at which this task's progress was last updated.";
     ]) 
     ()
 
