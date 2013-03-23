@@ -65,6 +65,8 @@ let check_operation_error ~__context ?(sr_records=[]) ?(pbd_records=[]) ?(vbd_re
 
 			(* Only a 'live' operation can be performed if there are active (even RO) devices *)
 			let is_active v = v.Db_actions.vBD_currently_attached || v.Db_actions.vBD_reserved in
+			(* VDI.copy can be performed if a VDI is only attached RO *)
+			let is_active_rw v = (is_active v) && (v.Db_actions.vBD_mode = `RW) in
 			(* VBD operations (plug/unplug) (which should be transient) cause us to serialise *)
 			let has_current_operation v = v.Db_actions.vBD_current_operations <> [] in
 
@@ -78,13 +80,29 @@ let check_operation_error ~__context ?(sr_records=[]) ?(pbd_records=[]) ?(vbd_re
 			| `clone -> true
 			| _ -> false in
 
+			let operation_can_be_performed_with_ro_attach =
+				operation_can_be_performed_live ||
+				(match op with
+				| `copy -> true
+				| _ -> false)
+			in
+
 			(* NB RO vs RW sharing checks are done in xapi_vbd.ml *)
 
 			let sr_uuid = Db.SR.get_uuid ~__context ~self:sr in
 			let sm_caps = Xapi_sr_operations.capabilities_of_sr_internal ~_type:sr_type ~uuid:sr_uuid in
 
 			let any_vbd p = List.fold_left (||) false (List.map p my_vbd_records) in
-			if not operation_can_be_performed_live && (any_vbd is_active)
+			let blocked_by_attach =
+				if operation_can_be_performed_live
+				then false
+				else begin
+					if operation_can_be_performed_with_ro_attach
+					then (any_vbd is_active_rw)
+					else (any_vbd is_active)
+				end
+			in
+			if blocked_by_attach
 			then Some (Api_errors.vdi_in_use,[_ref; (Record_util.vdi_operation_to_string op)])
 			else if any_vbd has_current_operation
 			then Some (Api_errors.other_operation_in_progress, [ "VDI"; _ref ])
