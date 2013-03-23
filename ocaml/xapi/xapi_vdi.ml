@@ -535,43 +535,46 @@ let clone ~__context ~vdi ~driver_params =
 		)
 
 let copy ~__context ~vdi ~sr =
-	Xapi_vdi_helpers.assert_managed ~__context ~vdi;
-	let task_id = Ref.string_of (Context.get_task_id __context) in
+	Local_work_queue.wait_in_line Local_work_queue.long_running_queue
+		(Printf.sprintf "VDI.copy %s" (Context.string_of_task __context))
+		(fun () ->
+			Xapi_vdi_helpers.assert_managed ~__context ~vdi;
+			let task_id = Ref.string_of (Context.get_task_id __context) in
 
-	let src = Db.VDI.get_record ~__context ~self:vdi in
-	let dst =
-		Helpers.call_api_functions ~__context
-			(fun rpc session_id ->
-				let result = Client.VDI.create ~rpc ~session_id
-					~name_label:src.API.vDI_name_label
-					~name_description:src.API.vDI_name_description
-					~sR:sr
-					~virtual_size:src.API.vDI_virtual_size
-					~_type:src.API.vDI_type
-					~sharable:src.API.vDI_sharable
-					(* CA-64962: Always create a RW VDI such that copy operation works with RO source VDI as well *)
-					~read_only:false
-					~other_config:src.API.vDI_other_config
-					~xenstore_data:src.API.vDI_xenstore_data
-					~sm_config:[] ~tags:[] in
-				if src.API.vDI_on_boot = `reset then begin
-					try Client.VDI.set_on_boot ~rpc ~session_id ~self:result ~value:(`reset) with _ -> ()
-				end;
-				result
-			) in
-	try
-		Db.VDI.set_allow_caching ~__context ~self:dst ~value:src.API.vDI_allow_caching;
+			let src = Db.VDI.get_record ~__context ~self:vdi in
+			let dst =
+				Helpers.call_api_functions ~__context
+					(fun rpc session_id ->
+						let result = Client.VDI.create ~rpc ~session_id
+							~name_label:src.API.vDI_name_label
+							~name_description:src.API.vDI_name_description
+							~sR:sr
+							~virtual_size:src.API.vDI_virtual_size
+							~_type:src.API.vDI_type
+							~sharable:src.API.vDI_sharable
+							(* CA-64962: Always create a RW VDI such that copy operation works with RO source VDI as well *)
+							~read_only:false
+							~other_config:src.API.vDI_other_config
+							~xenstore_data:src.API.vDI_xenstore_data
+							~sm_config:[] ~tags:[] in
+						if src.API.vDI_on_boot = `reset then begin
+							try Client.VDI.set_on_boot ~rpc ~session_id ~self:result ~value:(`reset) with _ -> ()
+						end;
+						result
+					) in
+			try
+				Db.VDI.set_allow_caching ~__context ~self:dst ~value:src.API.vDI_allow_caching;
 
-		Sm_fs_ops.copy_vdi ~__context vdi dst;
+				Sm_fs_ops.copy_vdi ~__context vdi dst;
 
-		Db.VDI.remove_from_current_operations ~__context ~self:dst ~key:task_id;
-		update_allowed_operations ~__context ~self:dst;
+				Db.VDI.remove_from_current_operations ~__context ~self:dst ~key:task_id;
+				update_allowed_operations ~__context ~self:dst;
 
-		dst
-	with e ->
-		Helpers.call_api_functions ~__context
-			(fun rpc session_id -> Client.VDI.destroy rpc session_id dst);
-			raise e
+				dst
+			with e ->
+				Helpers.call_api_functions ~__context
+					(fun rpc session_id -> Client.VDI.destroy rpc session_id dst);
+					raise e)
 
 let force_unlock ~__context ~vdi = 
   raise (Api_errors.Server_error(Api_errors.message_deprecated,[]))
