@@ -43,7 +43,8 @@ let number = ref 0
 let nmutex = Mutex.create ()
 let with_migrate f =
 	Mutex.execute nmutex (fun () ->
-		if !number = 3 then raise (Api_errors.Server_error (Api_errors.too_many_storage_migrates,["3"]));
+		if !number = 3 then
+			raise (Api_errors.Server_error (Api_errors.too_many_storage_migrates,["3"]));
 		incr number);
 	finally f (fun () -> 
 		Mutex.execute nmutex (fun () ->			
@@ -51,7 +52,10 @@ let with_migrate f =
 	
 
 module XenAPI = Client
-module SMAPI = Storage_interface.Client(struct let rpc = Storage_migrate.rpc ~srcstr:"xapi" ~dststr:"smapiv2" Storage_migrate.local_url end)
+module SMAPI =
+	Storage_interface.Client(struct
+		let rpc = Storage_migrate.rpc ~srcstr:"xapi" ~dststr:"smapiv2" Storage_migrate.local_url
+	end)
 
 module XenopsAPI = Xenops_client.Client
 open Storage_interface
@@ -65,7 +69,7 @@ let assert_licensed_storage_motion ~__context =
 let get_ip_from_url url =
 	match Http.Url.of_string url with
 		| Http.Url.Http { Http.Url.host = host }, _ -> host
-		| _, _ -> failwith (Printf.sprintf "Cannot extract foreign IP address from: %s" url) 
+		| _, _ -> failwith (Printf.sprintf "Cannot extract foreign IP address from: %s" url)
 
 let pool_migrate ~__context ~vm ~host ~options =
 	let dbg = Context.string_of_task __context in
@@ -79,7 +83,10 @@ let pool_migrate ~__context ~vm ~host ~options =
 			Xapi_xenops.with_events_suppressed ~__context ~self:vm (fun () ->
 				(* XXX: PR-1255: the live flag *)
 				info "xenops: VM.migrate %s to %s" vm' xenops_url;
-				XenopsAPI.VM.migrate dbg vm' [] [] xenops_url |> wait_for_task dbg |> success_task dbg |> ignore;
+				XenopsAPI.VM.migrate dbg vm' [] [] xenops_url
+					|> wait_for_task dbg
+					|> success_task dbg
+					|> ignore;
 				(* Delete all record of this VM locally (including caches) *)
 				Xapi_xenops.Xenopsd_metadata.delete ~__context vm';
 				(* Flush xenopsd events through: we don't want the pool database to
@@ -164,14 +171,22 @@ let intra_pool_vdi_remap ~__context vm vdi_map =
 			Db.VBD.set_VDI ~__context ~self:vbd ~value:mirror_record.mr_remote_vdi_reference) vbds
 
 
-let inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_address ~vm ~vdi_map ~vif_map ~dry_run ~live =
+let inter_pool_metadata_transfer
+		~__context ~remote_rpc ~session_id ~remote_address
+		~vm ~vdi_map ~vif_map ~dry_run ~live =
 	List.iter (fun (vdi,mirror_record) ->
-		Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key;
-		Db.VDI.add_to_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key ~value:(Ref.string_of mirror_record.mr_remote_vdi_reference)) vdi_map;
+		Db.VDI.remove_from_other_config ~__context ~self:vdi
+			~key:Constants.storage_migrate_vdi_map_key;
+		Db.VDI.add_to_other_config ~__context ~self:vdi
+			~key:Constants.storage_migrate_vdi_map_key
+			~value:(Ref.string_of mirror_record.mr_remote_vdi_reference)) vdi_map;
 
 	List.iter (fun (vif,network) ->
-		Db.VIF.remove_from_other_config ~__context ~self:vif ~key:Constants.storage_migrate_vif_map_key;
-		Db.VIF.add_to_other_config ~__context ~self:vif ~key:Constants.storage_migrate_vif_map_key ~value:(Ref.string_of network)) vif_map;
+		Db.VIF.remove_from_other_config ~__context ~self:vif
+			~key:Constants.storage_migrate_vif_map_key;
+		Db.VIF.add_to_other_config ~__context ~self:vif
+			~key:Constants.storage_migrate_vif_map_key
+			~value:(Ref.string_of network)) vif_map;
 
 	let vm_export_import = {
 		Importexport.vm = vm; dry_run = dry_run; live = live; send_snapshots=true;
@@ -183,10 +198,14 @@ let inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_addr
 		(fun () ->
 			(* Make sure we clean up the remote VDI and VIF mapping keys. *)
 			List.iter
-				(fun (vdi, _) -> Db.VDI.remove_from_other_config ~__context ~self:vdi ~key:Constants.storage_migrate_vdi_map_key)
+				(fun (vdi, _) ->
+					Db.VDI.remove_from_other_config ~__context ~self:vdi
+						~key:Constants.storage_migrate_vdi_map_key)
 				vdi_map;
 			List.iter
-				(fun (vif, _) -> Db.VIF.remove_from_other_config ~__context ~self:vif ~key:Constants.storage_migrate_vif_map_key)
+				(fun (vif, _) ->
+					Db.VIF.remove_from_other_config ~__context ~self:vif
+						~key:Constants.storage_migrate_vif_map_key)
 				vif_map)
 
 let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
@@ -231,7 +250,11 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 			raise (Api_errors.Server_error(Api_errors.vdi_not_in_map, [ vdi_uuid ]))) vdis) ;
 
 	let snapshots_vdis = List.filter_map (vdi_filter true) snapshots_vbds in
-	let total_size = List.fold_left (fun acc (_,_,_,_,_,sz,_,_) -> Int64.add acc sz) 0L (vdis @ snapshots_vdis) in
+	let total_size =
+		List.fold_left
+			(fun acc (_,_,_,_,_,sz,_,_) -> Int64.add acc sz)
+			0L (vdis @ snapshots_vdis)
+	in
 	let dbg = Context.string_of_task __context in
 	let dest_host = List.assoc _host dest in
 	let url = List.assoc _sm dest in
@@ -241,8 +264,11 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 	let remote_address = get_ip_from_url xenops in
 	let remote_master_address = get_ip_from_url master in
 
-	let is_intra_pool = 
-		try ignore(Db.Host.get_uuid ~__context ~self:(Ref.of_string dest_host)); true with _ -> false 
+	let is_intra_pool =
+		try
+			ignore(Db.Host.get_uuid ~__context ~self:(Ref.of_string dest_host));
+			true
+		with _ -> false
 	in
 
 	let mirrors = ref [] in
@@ -322,7 +348,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					SMAPI.VDI.activate ~dbg ~dp:newdp ~sr ~vdi:location;
 					new_dps := newdp :: !new_dps;
 
-					let mapfn = 
+					let mapfn =
 						let start = (Int64.to_float !so_far) /. (Int64.to_float total_size) in
 						let len = (Int64.to_float size) /. (Int64.to_float total_size) in
 						fun x -> start +. x *. len
@@ -332,13 +358,13 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 							SMAPI.DATA.copy ~dbg ~sr ~vdi:location ~dp:newdp ~url ~dest:dest_sr 
 						else begin
 							ignore(Storage_access.register_mirror __context location);
-							SMAPI.DATA.MIRROR.start ~dbg ~sr ~vdi:location ~dp:newdp ~url ~dest:dest_sr 
+							SMAPI.DATA.MIRROR.start ~dbg ~sr ~vdi:location ~dp:newdp ~url ~dest:dest_sr
 						end
 					in
 
 					vdis_to_destroy := vdi :: !vdis_to_destroy;
 
-					let task_result = 
+					let task_result =
 						task |> register_task __context 
 							 |> add_to_progress_map mapfn 
 							 |> wait_for_task dbg 
@@ -346,8 +372,8 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 							 |> unregister_task __context 
 							 |> success_task dbg in
 
-					let vdi = 
-						if not do_mirror 
+					let vdi =
+						if not do_mirror
 						then begin
 							let vdi = task_result |> vdi_of_task dbg in
 							remote_vdis := vdi.vdi :: !remote_vdis;
@@ -365,10 +391,16 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					debug "Local VDI %s mirrored to %s" location vdi;
 					debug "Executing remote scan to ensure VDI is known to xapi";
 					XenAPI.SR.scan remote_rpc session_id dest_sr_ref;
-					let query = Printf.sprintf "(field \"location\"=\"%s\") and (field \"SR\"=\"%s\")" vdi (Ref.string_of dest_sr_ref) in
+					let query =
+						Printf.sprintf
+							"(field \"location\"=\"%s\") and (field \"SR\"=\"%s\")"
+							vdi (Ref.string_of dest_sr_ref)
+					in
 					let vdis = XenAPI.VDI.get_all_records_where remote_rpc session_id query in
 
-					if List.length vdis <> 1 then error "Could not locate remote VDI: query='%s', length of results: %d" query (List.length vdis);
+					if List.length vdis <> 1 then
+						error "Could not locate remote VDI: query='%s', length of results: %d"
+						query (List.length vdis);
 
 					let remote_vdi_reference = fst (List.hd vdis) in
 
@@ -381,7 +413,8 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 								mr_vdi = location;
 								mr_sr = sr;
 								mr_local_xenops_locator = xenops_locator;
-								mr_remote_xenops_locator = Xapi_xenops.xenops_vdi_locator_of_strings dest_sr remote_vdi;
+								mr_remote_xenops_locator =
+									Xapi_xenops.xenops_vdi_locator_of_strings dest_sr remote_vdi;
 								mr_remote_vdi_reference = remote_vdi_reference; }) in
 
 		let snapshots_map = List.map vdi_copy_fun snapshots_vdis in
@@ -389,8 +422,12 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 
 		(* Move the xapi VM metadata *)
 
-		let xenops_vdi_map = List.map (fun (_, mirror_record) -> (mirror_record.mr_local_xenops_locator, mirror_record.mr_remote_xenops_locator)) (snapshots_map @ vdi_map) in
-		
+		let xenops_vdi_map =
+			List.map
+				(fun (_, mirror_record) ->
+					(mirror_record.mr_local_xenops_locator, mirror_record.mr_remote_xenops_locator))
+				(snapshots_map @ vdi_map)
+		in
 		(* Wait for delay fist to disappear *)
 		if Xapi_fist.pause_storage_migrate () then begin
 			TaskHelper.add_to_other_config ~__context "fist" "pause_storage_migrate";
@@ -400,7 +437,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 				Thread.delay 5.0;
 			done;
 			
-			TaskHelper.operate_on_db_task ~__context 
+			TaskHelper.operate_on_db_task ~__context
 				(fun self ->
 					Db_actions.DB_Action.Task.remove_from_other_config ~__context ~self ~key:"fist")
 		end;
@@ -416,7 +453,10 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					intra_pool_fix_suspend_sr ~__context (Ref.of_string dest_host) vm')
 				vm_and_snapshots
 		end
-		else inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_address ~vm ~vdi_map:(snapshots_map @ vdi_map) ~vif_map ~dry_run:false ~live:true;
+		else
+			inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id
+				~remote_address ~vm ~vdi_map:(snapshots_map @ vdi_map)
+				~vif_map ~dry_run:false ~live:true;
 
 		if Xapi_fist.pause_storage_migrate2 () then begin
 			TaskHelper.add_to_other_config ~__context "fist" "pause_storage_migrate2";
@@ -426,7 +466,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 				Thread.delay 5.0;
 			done;
 			
-			TaskHelper.operate_on_db_task ~__context 
+			TaskHelper.operate_on_db_task ~__context
 				(fun self ->
 					Db_actions.DB_Action.Task.remove_from_other_config ~__context ~self ~key:"fist")
 		end;
@@ -436,7 +476,8 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		let new_vm = XenAPI.VM.get_by_uuid remote_rpc session_id vm_uuid in
 
 		(* Attach networks on remote *)
-		XenAPI.Network.attach_for_vm ~rpc:remote_rpc ~session_id ~host:(Ref.of_string dest_host) ~vm:new_vm;
+		XenAPI.Network.attach_for_vm ~rpc:remote_rpc ~session_id
+			~host:(Ref.of_string dest_host) ~vm:new_vm;
 
 		(* Create the vif-map for xenops, linking VIF devices to bridge names on the remote *)
 		let xenops_vif_map =
@@ -449,19 +490,24 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 			) vifs
 		in
 
-		(* Destroy the local datapaths - this allows the VDIs to properly detach, invoking the migrate_finalize calls *)
-		List.iter (fun (_ , mirror_record) -> 
-			if mirror_record.mr_mirrored 
+		(* Destroy the local datapaths - this allows the VDIs to properly detach,
+		 * invoking the migrate_finalize calls *)
+		List.iter (fun (_ , mirror_record) ->
+			if mirror_record.mr_mirrored
 			then SMAPI.DP.destroy ~dbg ~dp:mirror_record.mr_dp ~allow_leak:false) (snapshots_map @ vdi_map);
 
 		SMPERF.debug "vm.migrate_send: migration initiated vm:%s" vm_uuid;
 
-		(* It's acceptable for the VM not to exist at this point; shutdown commutes with storage migrate *)
+		(* It's acceptable for the VM not to exist at this point;
+		 * shutdown commutes with storage migrate *)
 		begin
 			try
 				Xapi_xenops.with_events_suppressed ~__context ~self:vm
 					(fun () ->
-						XenopsAPI.VM.migrate dbg vm_uuid xenops_vdi_map xenops_vif_map xenops |> wait_for_task dbg |> success_task dbg |> ignore;
+						XenopsAPI.VM.migrate dbg vm_uuid xenops_vdi_map xenops_vif_map xenops
+							|> wait_for_task dbg
+							|> success_task dbg
+							|> ignore;
 						Xapi_xenops.Xenopsd_metadata.delete ~__context vm_uuid;
 						Xapi_xenops.Events_from_xenopsd.wait dbg vm_uuid ())
 			with
@@ -480,7 +526,8 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		List.iter (fun mirror ->
 			ignore(Storage_access.unregister_mirror mirror)) !mirrors;
 
-		Rrdd_proxy.migrate_rrd ~__context ~remote_address ~session_id:(Ref.string_of session_id)
+		Rrdd_proxy.migrate_rrd
+			~__context ~remote_address ~session_id:(Ref.string_of session_id)
 			~vm_uuid:vm_uuid ~host_uuid:dest_host ();
 
 		if not is_intra_pool then begin
@@ -492,23 +539,30 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 			(* Signal the remote pool that we're done *)
 		end;
 		
-		let vbds = List.map (fun vbd -> (vbd,Db.VBD.get_record ~__context ~self:vbd)) (Db.VM.get_VBDs ~__context ~self:vm) in
+		let vbds =
+			List.map
+				(fun vbd -> (vbd,Db.VBD.get_record ~__context ~self:vbd))
+				(Db.VM.get_VBDs ~__context ~self:vm) in
 
-		Helpers.call_api_functions ~__context (fun rpc session_id -> 
-			List.iter (fun vdi -> 
-				if not (Xapi_fist.storage_motion_keep_vdi ()) 
+		Helpers.call_api_functions ~__context (fun rpc session_id ->
+			List.iter (fun vdi ->
+				if not (Xapi_fist.storage_motion_keep_vdi ())
 				then begin
-					(* In a cross-pool migrate, due to the Xapi_xenops.with_events_suppressed call above, 
+					(* In a cross-pool migrate, due to the Xapi_xenops.with_events_suppressed call above,
 					   the VBDs are left 'currently-attached=true', because they haven't been resynced
 					   by the destination host.
 
 					   Look for VBDs in this state (there shouldn't be any for intra-pool) and destroy
-					   them 
+					   them
 					*)
-					let matching_vbd = 
-						try Some (List.find (fun (vbd,vbd_r) -> vbd_r.API.vBD_VDI = vdi && vbd_r.API.vBD_currently_attached) vbds) with _ -> None
+					let matching_vbd =
+						try
+							Some (List.find
+								(fun (vbd,vbd_r) -> vbd_r.API.vBD_VDI = vdi && vbd_r.API.vBD_currently_attached)
+								vbds)
+						with _ -> None
 					in
-					Opt.iter (fun (vbd,_) ->  
+					Opt.iter (fun (vbd,_) ->
 						if is_intra_pool then
 							error "VBD unexpectedly currently-attached! not deleting"
 						else begin
@@ -550,7 +604,10 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					let query = Printf.sprintf "(field \"location\"=\"%s\")" remote_vdi in
 					let vdis = XenAPI.VDI.get_all_records_where remote_rpc session_id query in
 
-					if List.length vdis <> 1 then error "Could not locate remote VDI: query='%s', length of results: %d" query (List.length vdis);
+					if List.length vdis <> 1 then
+						error
+							"Could not locate remote VDI: query='%s', length of results: %d"
+							query (List.length vdis);
 					
 					let remote_vdi_reference = fst (List.hd vdis) in
 					XenAPI.VDI.destroy remote_rpc session_id remote_vdi_reference
@@ -563,17 +620,20 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		let task = Context.get_task_id __context in
 		let oc = Db.Task.get_other_config ~__context ~self:task in
 		if List.mem_assoc "mirror_failed" oc then
-			failed_vdi := Some (List.assoc "mirror_failed" oc);			
+			failed_vdi := Some (List.assoc "mirror_failed" oc);
 		match !failed_vdi with
-			| Some loc -> 
+			| Some loc ->
 				let (vdi,_,_,_,_,_,_,_) = List.find (fun (_,_,loc',_,_,_,_,_) -> loc'=loc) vdis in
 				debug "Mirror failed for VDI: %s" loc;
 				raise (Api_errors.Server_error(Api_errors.mirror_failed,[Ref.string_of vdi]))
 			| None ->
 				TaskHelper.exn_if_cancelling ~__context;
 				begin match e with
-					| Storage_interface.Backend_error(code, params) -> raise (Api_errors.Server_error(code, params))
-					| Storage_interface.Unimplemented(code) -> raise (Api_errors.Server_error(Api_errors.unimplemented_in_sm_backend, [code]))
+					| Storage_interface.Backend_error(code, params) ->
+						raise (Api_errors.Server_error(code, params))
+					| Storage_interface.Unimplemented(code) ->
+						raise (Api_errors.Server_error
+							(Api_errors.unimplemented_in_sm_backend, [code]))
 					| _ -> raise e
 				end
 
@@ -622,7 +682,10 @@ let assert_can_migrate  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 				~remote:(remote_rpc, session_id) ();
 
 		(* Ignore vdi_map for now since we won't be doing any mirroring. *)
-		try inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id ~remote_address ~vm ~vdi_map:[] ~vif_map ~dry_run:true ~live:true
+		try
+			inter_pool_metadata_transfer
+				~__context ~remote_rpc ~session_id ~remote_address ~vm
+				~vdi_map:[] ~vif_map ~dry_run:true ~live:true
 		with Xmlrpc_client.Connection_reset ->
 			raise (Api_errors.Server_error(Api_errors.cannot_contact_host, [remote_address]))
 
@@ -658,82 +721,90 @@ let handler req fd _ =
 	let task_id = Ref.of_string (safe_lookup "task_id" req.Http.Request.cookie) in
 	let vm = Ref.of_string (safe_lookup "ref" req.Http.Request.query) in
 
-	Server_helpers.exec_with_forwarded_task ~session_id task_id ~origin:(Context.Http(req,fd)) (fun __context ->
-		let localhost = Helpers.get_localhost ~__context in
+	Server_helpers.exec_with_forwarded_task ~session_id task_id ~origin:(Context.Http(req,fd))
+		(fun __context ->
+			let localhost = Helpers.get_localhost ~__context in
 
-		(* NB this parameter will be present except when we're doing a rolling upgrade. *)
-		let memory_required_kib = 
-			if List.mem_assoc _memory_required_kib req.Http.Request.query then
-				Int64.of_string (List.assoc _memory_required_kib req.Http.Request.query)
-			else
-				Memory.kib_of_bytes_used (Memory_check.vm_compute_migrate_memory __context vm)
-		in
-		try
-			Http_svr.headers fd (Http.http_200_ok ());
-
-			debug "memory_required_kib = %Ld" memory_required_kib;
-			let snapshot = Helpers.get_boot_record ~__context ~self:vm in
-			(* CA-31764: the transmitted memory value may actually be > static_max if maxmem on the remote was
-			   increased. If this happens we clip the target at static_max. If the domain has managed to
-			   allocate more than static_max (!) then it may not fit and the migrate will fail. *)
-			let target_kib =
-				Memory.kib_of_bytes_used (
-					let bytes = Memory.bytes_of_kib memory_required_kib in
-					if bytes > snapshot.API.vM_memory_static_max then begin
-						warn "memory_required_bytes = %Ld > memory_static_max = %Ld; clipping"
-							bytes snapshot.API.vM_memory_static_max;
-						snapshot.API.vM_memory_static_max
-					end else
-						bytes
-				)
+			(* NB this parameter will be present except when we're doing a rolling upgrade. *)
+			let memory_required_kib =
+				if List.mem_assoc _memory_required_kib req.Http.Request.query then
+					Int64.of_string (List.assoc _memory_required_kib req.Http.Request.query)
+				else
+					Memory.kib_of_bytes_used (Memory_check.vm_compute_migrate_memory __context vm)
 			in
+			try
+				Http_svr.headers fd (Http.http_200_ok ());
 
-			(* Since the initial memory target is read from vM_memory_target in _resume_domain we must
-			   configure this to prevent the domain ballooning up and allocating more than target_kib
-			   of guest memory on unpause. *)
-			let snapshot = { snapshot with API.vM_memory_target = Memory.bytes_of_kib target_kib } in
-			let overhead_bytes = Memory_check.vm_compute_memory_overhead snapshot in
-			let free_memory_required_kib = Int64.add (Memory.kib_of_bytes_used overhead_bytes) memory_required_kib in
-			debug "overhead_bytes = %Ld; free_memory_required = %Ld KiB" overhead_bytes free_memory_required_kib;
+				debug "memory_required_kib = %Ld" memory_required_kib;
+				let snapshot = Helpers.get_boot_record ~__context ~self:vm in
+				(* CA-31764: the transmitted memory value may actually be > static_max if
+				 * maxmem on the remote was increased. If this happens we clip the target
+				 * at static_max. If the domain has managed to allocate more than
+				 * static_max (!) then it may not fit and the migrate will fail. *)
+				let target_kib =
+					Memory.kib_of_bytes_used (
+						let bytes = Memory.bytes_of_kib memory_required_kib in
+						if bytes > snapshot.API.vM_memory_static_max then begin
+							warn "memory_required_bytes = %Ld > memory_static_max = %Ld; clipping"
+								bytes snapshot.API.vM_memory_static_max;
+							snapshot.API.vM_memory_static_max
+						end else
+							bytes
+					)
+				in
 
-			let dbg = Context.string_of_task __context in
-			Xapi_network.with_networks_attached_for_vm ~__context ~vm (fun () ->
-				Xapi_xenops.transform_xenops_exn ~__context (fun () ->
-					debug "Sending VM %s configuration to xenopsd" (Ref.string_of vm);
-					let id = Xapi_xenops.Xenopsd_metadata.push ~__context ~upgrade:true ~self:vm in
-					info "xenops: VM.receive_memory %s" id;
-					let uri = Printf.sprintf "/services/xenops/memory/%s" id in
-					let memory_limit = free_memory_required_kib |> Memory.bytes_of_kib |> Int64.to_string in
-					let req = Http.Request.make ~cookie:["dbg", dbg; "instance_id", "upgrade"; "memory_limit", memory_limit]
-						~user_agent:"xapi" Http.Put uri in
-					let path = Filename.concat Fhs.vardir "xenopsd.forwarded" in
-					let response = Xapi_services.hand_over_connection req fd path in
-					begin match response with
-						| Some task ->
-							let open Xenops_client in
-							task |> wait_for_task dbg |> success_task dbg |> ignore
-						| None ->
-							debug "We did not get a task id to wait for!!"
-					end;
-					Xapi_xenops.set_resident_on ~__context ~self:vm
-				)
-			);
+				(* Since the initial memory target is read from vM_memory_target in _resume_domain we must
+					 configure this to prevent the domain ballooning up and allocating more than target_kib
+					 of guest memory on unpause. *)
+				let snapshot = { snapshot with API.vM_memory_target = Memory.bytes_of_kib target_kib } in
+				let overhead_bytes = Memory_check.vm_compute_memory_overhead snapshot in
+				let free_memory_required_kib =
+					Int64.add (Memory.kib_of_bytes_used overhead_bytes) memory_required_kib in
+				debug
+					"overhead_bytes = %Ld; free_memory_required = %Ld KiB"
+					overhead_bytes free_memory_required_kib;
 
-			(* We will have missed important events because we set resident_on late.
-			   This was deliberate: resident_on is used by the pool master to reserve
-			   memory. If we called 'atomic_set_resident_on' before the domain is
-			   transferred then we would have no record of the memory use. *)
-			Helpers.call_api_functions ~__context (fun rpc session_id ->
-				XenAPI.VM.pool_migrate_complete rpc session_id vm localhost
-			);
+				let dbg = Context.string_of_task __context in
+				Xapi_network.with_networks_attached_for_vm ~__context ~vm (fun () ->
+					Xapi_xenops.transform_xenops_exn ~__context (fun () ->
+						debug "Sending VM %s configuration to xenopsd" (Ref.string_of vm);
+						let id = Xapi_xenops.Xenopsd_metadata.push ~__context ~upgrade:true ~self:vm in
+						info "xenops: VM.receive_memory %s" id;
+						let uri = Printf.sprintf "/services/xenops/memory/%s" id in
+						let memory_limit = free_memory_required_kib
+							|> Memory.bytes_of_kib
+							|> Int64.to_string in
+						let req = Http.Request.make
+							~cookie:["dbg", dbg; "instance_id", "upgrade"; "memory_limit", memory_limit]
+							~user_agent:"xapi" Http.Put uri in
+						let path = Filename.concat Fhs.vardir "xenopsd.forwarded" in
+						let response = Xapi_services.hand_over_connection req fd path in
+						begin match response with
+							| Some task ->
+								let open Xenops_client in
+								task |> wait_for_task dbg |> success_task dbg |> ignore
+							| None ->
+								debug "We did not get a task id to wait for!!"
+						end;
+						Xapi_xenops.set_resident_on ~__context ~self:vm
+					)
+				);
 
-			TaskHelper.set_progress ~__context 1.
-		with
-		| Api_errors.Server_error(code, params) ->
-			TaskHelper.failed ~__context(code, params)
-		| e ->
-			TaskHelper.failed ~__context (Api_errors.internal_error, [ ExnHelper.string_of_exn e ])
-    )
+				(* We will have missed important events because we set resident_on late.
+					 This was deliberate: resident_on is used by the pool master to reserve
+					 memory. If we called 'atomic_set_resident_on' before the domain is
+					 transferred then we would have no record of the memory use. *)
+				Helpers.call_api_functions ~__context (fun rpc session_id ->
+					XenAPI.VM.pool_migrate_complete rpc session_id vm localhost
+				);
+
+				TaskHelper.set_progress ~__context 1.
+			with
+			| Api_errors.Server_error(code, params) ->
+				TaskHelper.failed ~__context(code, params)
+			| e ->
+				TaskHelper.failed ~__context (Api_errors.internal_error, [ ExnHelper.string_of_exn e ])
+		)
 
 let vdi_pool_migrate ~__context ~vdi ~sr ~options =
 	let localhost = Helpers.get_localhost ~__context in
@@ -765,7 +836,10 @@ let vdi_pool_migrate ~__context ~vdi ~sr ~options =
 	let management_if =
 		Xapi_inventory.lookup Xapi_inventory._management_interface in
 	let open Db_filter_types in
-	let networks = Db.Network.get_records_where ~__context ~expr:(Eq (Field "bridge", Literal management_if)) in
+	let networks =
+		Db.Network.get_records_where
+			~__context ~expr:(Eq (Field "bridge", Literal management_if))
+	in
 	let network = match networks with
 		| (net,_)::_ -> net
 		| _ -> raise (Api_errors.Server_error(Api_errors.host_has_no_management_ip, []))
