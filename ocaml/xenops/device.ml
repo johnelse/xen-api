@@ -1553,6 +1553,7 @@ type usb_opt =
 type disp_intf_opt =
     | Std_vga
     | Cirrus
+    | Vgpu
 with rpc
 
 (* Display output / keyboard input *)
@@ -1667,6 +1668,7 @@ let get_state ~xs ~qemu_domid domid =
 let cmdline_of_disp info =
 	let vga_type_opts x = 
 	  match x with
+	    | Vgpu -> ["-vgpu"]
 	    | Std_vga -> ["-std-vga"]
 	    | Cirrus -> []
 	in
