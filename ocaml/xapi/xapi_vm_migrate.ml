@@ -423,19 +423,9 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					(mirror_record.mr_local_xenops_locator, mirror_record.mr_remote_xenops_locator))
 				(snapshots_map @ vdi_map)
 		in
-		(* Wait for delay fist to disappear *)
-		if Xapi_fist.pause_storage_migrate () then begin
-			TaskHelper.add_to_other_config ~__context "fist" "pause_storage_migrate";
-			
-			while Xapi_fist.pause_storage_migrate () do
-				debug "Sleeping while fistpoint exists";
-				Thread.delay 5.0;
-			done;
-			
-			TaskHelper.operate_on_db_task ~__context
-				(fun self ->
-					Db_actions.DB_Action.Task.remove_from_other_config ~__context ~self ~key:"fist")
-		end;
+
+		(* Wait for first delay fist to disappear *)
+		Xapi_sxm.Fist.wait_for_pause_storage_migrate ~__context;
 
 		TaskHelper.exn_if_cancelling ~__context;
 
@@ -454,18 +444,8 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 				~remote_address ~vm ~vdi_map:(snapshots_map @ vdi_map)
 				~vif_map ~dry_run:false ~live:true;
 
-		if Xapi_fist.pause_storage_migrate2 () then begin
-			TaskHelper.add_to_other_config ~__context "fist" "pause_storage_migrate2";
-			
-			while Xapi_fist.pause_storage_migrate2 () do
-				debug "Sleeping while fistpoint 2 exists";
-				Thread.delay 5.0;
-			done;
-			
-			TaskHelper.operate_on_db_task ~__context
-				(fun self ->
-					Db_actions.DB_Action.Task.remove_from_other_config ~__context ~self ~key:"fist")
-		end;
+		(* Wait for second delay fist to disappear *)
+		Xapi_sxm.Fist.wait_for_pause_storage_migrate2 ~__context;
 
 		(* Migrate the VM *)
 		let open Xenops_client in
