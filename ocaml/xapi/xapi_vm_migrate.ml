@@ -420,8 +420,6 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 		let snapshots_map = List.map vdi_copy_fun snapshots_vdis in
 		let vdi_map = List.map vdi_copy_fun vdis in
 
-		(* Move the xapi VM metadata *)
-
 		let xenops_vdi_map =
 			List.map
 				(fun (_, mirror_record) ->
@@ -454,6 +452,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 				vm_and_snapshots
 		end
 		else
+			(* Move the xapi VM metadata to the remote pool *)
 			inter_pool_metadata_transfer ~__context ~remote_rpc ~session_id
 				~remote_address ~vm ~vdi_map:(snapshots_map @ vdi_map)
 				~vif_map ~dry_run:false ~live:true;
