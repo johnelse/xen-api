@@ -29,8 +29,16 @@ open DD
 
 module SMPERF=Debug.Debugger(struct let name="SMPERF" end)
 
-open Client
-open Xmlrpc_client
+module XenAPI = Client.Client
+module SMAPI =
+	Storage_interface.Client(struct
+		let rpc = Storage_migrate.rpc ~srcstr:"xapi" ~dststr:"smapiv2" Storage_migrate.local_url
+	end)
+
+module XenopsAPI = Xenops_client.Client
+open Storage_interface
+open Listext
+open Fun
 
 let _sm = "SM"
 let _xenops = "xenops"
@@ -50,17 +58,6 @@ let with_migrate f =
 		Mutex.execute nmutex (fun () ->			
 			decr number))
 	
-
-module XenAPI = Client
-module SMAPI =
-	Storage_interface.Client(struct
-		let rpc = Storage_migrate.rpc ~srcstr:"xapi" ~dststr:"smapiv2" Storage_migrate.local_url
-	end)
-
-module XenopsAPI = Xenops_client.Client
-open Storage_interface
-open Listext
-open Fun
 
 let assert_licensed_storage_motion ~__context =
 	if (not (Pool_features.is_enabled ~__context Features.Storage_motion)) then
