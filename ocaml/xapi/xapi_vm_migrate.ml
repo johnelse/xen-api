@@ -289,12 +289,12 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 							 |> unregister_task __context 
 							 |> success_task dbg in
 
-					let vdi =
+					let remote_vdi =
 						if not do_mirror
 						then begin
-							let vdi = task_result |> vdi_of_task dbg in
-							remote_vdis := vdi.vdi :: !remote_vdis;
-							vdi.vdi
+							let remote_vdi = task_result |> vdi_of_task dbg in
+							remote_vdis := remote_vdi.vdi :: !remote_vdis;
+							remote_vdi.vdi
 						end	else begin 
 							let mirror_id = task_result |> mirror_of_task dbg in
 							mirrors := mirror_id :: !mirrors;
@@ -305,13 +305,13 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 
 					so_far := Int64.add !so_far size;
 
-					debug "Local VDI %s mirrored to %s" location vdi;
+					debug "Local VDI %s mirrored to %s" location remote_vdi;
 					debug "Executing remote scan to ensure VDI is known to xapi";
 					XenAPI.SR.scan remote_rpc session_id dest_sr_ref;
 					let query =
 						Printf.sprintf
 							"(field \"location\"=\"%s\") and (field \"SR\"=\"%s\")"
-							vdi (Ref.string_of dest_sr_ref)
+							remote_vdi (Ref.string_of dest_sr_ref)
 					in
 					let vdis = XenAPI.VDI.get_all_records_where remote_rpc session_id query in
 
@@ -322,7 +322,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 					let remote_vdi_reference = fst (List.hd vdis) in
 
 					debug "Found remote vdi reference: %s" (Ref.string_of remote_vdi_reference);
-					vdi,remote_vdi_reference,newdp
+					remote_vdi,remote_vdi_reference,newdp
 				end
 			in
 				(vdi, { Xapi_sxm.Mirror.mr_dp = newdp;
