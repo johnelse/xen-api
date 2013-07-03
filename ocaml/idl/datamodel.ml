@@ -48,6 +48,9 @@ let tampa_release_schema_minor_vsn = 66
 let clearwater_release_schema_major_vsn = 5
 let clearwater_release_schema_minor_vsn = 67
 
+let vgpu_release_schema_major_vsn = 5
+let vgpu_release_schema_minor_vsn = 68
+
 let augusta_release_schema_major_vsn = 5
 let augusta_release_schema_minor_vsn = 80
 
@@ -172,6 +175,12 @@ let get_product_releases in_product_since =
 
 let augusta_release =
 	{ internal = get_product_releases rel_augusta
+	; opensource=get_oss_releases None
+	; internal_deprecated_since=None
+	}
+
+let vgpu_release =
+	{ internal=get_product_releases rel_vgpu
 	; opensource=get_oss_releases None
 	; internal_deprecated_since=None
 	}
