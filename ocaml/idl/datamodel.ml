@@ -7789,6 +7789,16 @@ let gpu_group =
 		~allowed_roles:_R_READ_ONLY
 		()
 	in
+	let get_supported_VGPU_types = call
+		~name:"get_supported_VGPU_types"
+		~lifecycle:[Published, rel_vgpu, ""]
+		~params:[
+			Ref _gpu_group, "self", "The GPU group to query"
+		]
+		~result:(Set (Ref _vgpu_type), "The list of VGPU types which are supported on at least one PGPU in this group")
+		~allowed_roles:_R_READ_ONLY
+		()
+	in
 	let allocation_algorithm =
 		Enum ("allocation_algorithm",
 			[ "breadth_first", "vGPUs of a given type are allocated evenly across supporting pGPUs.";
@@ -7803,7 +7813,12 @@ let gpu_group =
 		~gen_events:true
 		~in_db:true
 		~lifecycle:[Published, rel_boston, ""]
-		~messages:[create; destroy; get_enabled_VGPU_types]
+		~messages:[
+			create;
+			destroy;
+			get_enabled_VGPU_types;
+			get_supported_VGPU_types;
+		]
 		~messages_default_allowed_roles:_R_POOL_OP
 		~persist:PersistEverything
 		~in_oss_since:None
