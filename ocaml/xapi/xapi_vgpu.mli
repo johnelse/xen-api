@@ -21,7 +21,7 @@ val create :
   vM:[ `VM ] Ref.t ->
   gPU_group:[ `GPU_group ] Ref.t ->
   device:string -> other_config:(string * string) list ->
-  _type:[ `VGPU_type ] Ref.t -> [ `VGPU ] Ref.t
+  _type:[ `VGPU_type ] Ref.t -> vnc_enabled:bool -> [ `VGPU ] Ref.t
 
 (** Destroy a VGPU. *)
 val destroy : __context:Context.t -> self:[ `VGPU ] Ref.t -> unit

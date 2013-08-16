@@ -4325,7 +4325,11 @@ let vgpu_create printer rpc session_id params =
 		then Client.VGPU_type.get_by_uuid rpc session_id (List.assoc "vgpu-type-uuid" params)
 		else Ref.null
 	in
-	let vgpu = Client.VGPU.create ~rpc ~session_id ~device ~gPU_group ~vM ~other_config:[] ~_type in
+	let vnc_enabled = get_bool_param params ~default:true "enable-vnc" in
+	let vgpu =
+		Client.VGPU.create ~rpc ~session_id ~device
+			~gPU_group ~vM ~other_config:[] ~_type ~vnc_enabled
+	in
 	let uuid = Client.VGPU.get_uuid rpc session_id vgpu in
 	printer (Cli_printer.PList [uuid])
 

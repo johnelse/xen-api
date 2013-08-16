@@ -7822,6 +7822,7 @@ let vgpu =
 			{param_type=String; param_name="device"; param_doc=""; param_release=boston_release; param_default=Some (VString "0")};
 			{param_type=(Map (String, String)); param_name="other_config"; param_doc=""; param_release=boston_release; param_default=Some (VMap [])};
 			{param_type=(Ref _vgpu_type); param_name="type"; param_doc=""; param_release=vgpu_release; param_default=(Some (VRef (Ref.string_of Ref.null)))};
+			{param_type=Bool; param_name="vnc_enabled"; param_doc=""; param_release=vgpu_release; param_default=(Some (VBool true))};
 		]
 		~result:(Ref _vgpu, "reference to the newly created object")
 		~allowed_roles:_R_POOL_OP
@@ -7857,6 +7858,7 @@ let vgpu =
 			field ~qualifier:RW ~ty:(Map (String,String)) ~lifecycle:[Published, rel_boston, ""] "other_config" "Additional configuration" ~default_value:(Some (VMap []));
 			field ~qualifier:DynamicRO ~ty:(Ref _vgpu_type) ~lifecycle:[Published, rel_vgpu, ""] "type" "Preset type for this VGPU" ~default_value:(Some (VRef (Ref.string_of Ref.null)));
 			field ~qualifier:DynamicRO ~ty:(Ref _pgpu) ~lifecycle:[Published, rel_vgpu, ""] "resident_on" "The PGPU on which this VGPU is running" ~default_value:(Some (VRef (Ref.string_of Ref.null)));
+			field ~qualifier:DynamicRO ~ty:Bool ~lifecycle:[Published, rel_vgpu, ""] "vnc_enabled" "Enable the VNC console for this VGPU, if applicable" ~default_value:(Some (VBool true));
 			]
 		()
 

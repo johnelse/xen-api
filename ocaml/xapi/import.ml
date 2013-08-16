@@ -1025,8 +1025,12 @@ module VGPU : HandlerTools = struct
 			handle_dry_run __context config rpc session_id state x precheck_result
 		| Create vgpu_record -> begin
 			let vgpu = log_reraise "failed to create VGPU" (fun value ->
-				let vgpu = Client.VGPU.create ~rpc ~session_id ~vM:value.API.vGPU_VM ~gPU_group:value.API.vGPU_GPU_group
-					~device:value.API.vGPU_device ~other_config:value.API.vGPU_other_config ~_type:value.API.vGPU_type in
+				let vgpu =
+					Client.VGPU.create ~rpc ~session_id ~vM:value.API.vGPU_VM
+						~gPU_group:value.API.vGPU_GPU_group ~device:value.API.vGPU_device
+						~other_config:value.API.vGPU_other_config
+						~_type:value.API.vGPU_type ~vnc_enabled:value.API.vGPU_vnc_enabled
+				in
 				if config.full_restore then Db.VGPU.set_uuid ~__context ~self:vgpu ~value:value.API.vGPU_uuid;
 				vgpu) vgpu_record
 			in
