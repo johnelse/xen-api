@@ -1,5 +1,5 @@
 (*
- * Copyright (C) 2006-2012 Citrix Systems Inc.
+ * Copyright (C) 2006-2013 Citrix Systems Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published
@@ -13,26 +13,12 @@
  *)
 
 open OUnit
+open Test_common
 
-let base_suite =
-	"base_suite" >:::
+let test_import_unsupported_vgpu_type () = ()
+
+let test =
+	"test_import_vgpu_type" >:::
 		[
-			Test_basic.test;
-			Test_helpers.test;
-			Test_pool_db_backup.test;
-			Test_xapi_db_upgrade.test;
-			Test_vdi_allowed_operations.test;
-			Test_pool_license.test;
-			Test_platformdata.test;
-			Test_sm_features.test;
-			Test_import_vgpu_type.test;
-			Test_pci_db.test;
-			Test_pci_helpers.test;
-			Test_vgpu_type.test;
-			Test_pgpu.test;
-			Test_pgpu_helpers.test;
-			Test_vm_helpers.test;
-			Test_xenopsd_metadata.test;
+			"test_import_unsupported_vgpu_type" >:: test_import_unsupported_vgpu_type;
 		]
-
-let _ = run_test_tt_main base_suite

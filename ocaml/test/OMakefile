@@ -33,6 +33,7 @@ OCAML_OBJS = \
 	test_pool_license \
 	test_platformdata \
 	test_sm_features \
+	test_import_vgpu_type \
 	test_pci_db \
 	test_pci_helpers \
 	test_vgpu_type \
