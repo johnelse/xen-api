@@ -3803,6 +3803,11 @@ let pool_disable_external_auth printer rpc session_id params =
 	let config = read_map_params "config" params in
 	Client.Pool.disable_external_auth rpc session_id pool config
 
+let pool_get_session_diagnostics printer rpc session_id params =
+	let pool = get_pool_with_default rpc session_id params "uuid" in
+	printer (Cli_printer.PMsg
+		(Client.Pool.get_session_diagnostics ~rpc ~session_id ~self:pool))
+
 let host_restore fd printer rpc session_id params =
 	let filename = List.assoc "file-name" params in
 	let op _ host =

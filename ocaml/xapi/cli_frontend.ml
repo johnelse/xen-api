@@ -2233,6 +2233,14 @@ add a mapping of 'path' -> '/tmp', the command line should contain the argument 
       implementation=No_fd Cli_operations.pool_disable_redo_log;
       flags=[]
     };
+		"pool-get-session-diagnostics",
+		{
+			reqd=[];
+			optn=["uuid"];
+			help="Print numbers of internal and external sessions open in the pool";
+			implementation=No_fd Cli_operations.pool_get_session_diagnostics;
+			flags=[];
+		};
 
     "host-ha-xapi-healthcheck",
     {
