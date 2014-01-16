@@ -179,3 +179,5 @@ val disable_local_storage_caching : __context:Context.t -> self:API.ref_pool -> 
 
 val get_license_state : __context:Context.t -> self:API.ref_pool -> (string * string) list
 val apply_edition : __context:Context.t -> self:API.ref_pool -> edition:string -> unit
+
+val get_session_diagnostics : __context:Context.t -> self:API.ref_pool -> string

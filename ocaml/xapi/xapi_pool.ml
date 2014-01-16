@@ -1706,3 +1706,18 @@ let apply_edition ~__context ~self ~edition =
 				Client.Host.apply_edition ~rpc ~session_id ~host ~edition ~force:false))
 	in
 	Xapi_pool_license.apply_edition_with_rollback ~__context ~hosts ~edition ~apply_fn
+
+let get_session_diagnostics ~__context ~self =
+	let all_sessions =
+		Db.Session.get_internal_records_where ~__context ~expr:Db_filter_types.True
+	in
+	let (intrapool_sessions, normal_sessions) =
+		List.partition
+			(fun (_, session) -> session.Db_actions.session_pool)
+			all_sessions
+	in
+	Printf.sprintf
+		"internal sessions:%d\nexternal sessions:%d"
+		(List.length intrapool_sessions)
+		(List.length normal_sessions)
+

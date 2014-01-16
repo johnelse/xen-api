@@ -6212,6 +6212,18 @@ let pool_apply_edition = call
 	~allowed_roles:_R_POOL_OP
 	()
 
+let pool_get_session_diagnostics = call
+	~name:"get_session_diagnostics"
+	~in_oss_since:None
+	~in_product_since:rel_clearwater
+	~params:[
+		Ref _pool, "self", "Reference to the pool";
+	]
+	~result:(String, "The string containing the diagnostics information")
+	~doc:"Get the numbers of internal and external sessions"
+	~allowed_roles:_R_POOL_OP
+	()
+
 (** A pool class *)
 let pool =
 	create_obj
@@ -6278,6 +6290,7 @@ let pool =
 			; pool_disable_local_storage_caching
 			; pool_get_license_state
 			; pool_apply_edition
+			; pool_get_session_diagnostics
 			]
 		~contents:
 			[uid ~in_oss_since:None _pool
