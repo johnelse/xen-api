@@ -929,6 +929,7 @@ module VM = struct
 				let video, vgpu = match video with
 					| Cirrus -> Device.Dm.Cirrus, None
 					| Standard_VGA -> Device.Dm.Std_vga, None
+					| IGD_Passthru -> Device.Dm.IGD_passthru, None
 					| Vgpu ->
 						let vgpu =
 							try

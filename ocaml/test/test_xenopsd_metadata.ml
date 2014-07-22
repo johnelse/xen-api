@@ -127,6 +127,7 @@ module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 			| Vm.Cirrus -> "Cirrus"
 			| Vm.Standard_VGA -> "Standard_VGA"
 			| Vm.Vgpu -> "Vgpu"
+			| Vm.IGD_Passthru -> "IGD_Passthru"
 	end
 
 	module State = XapiDb
@@ -146,6 +147,7 @@ module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 		(* Video modes set in the platform map should be respected. *)
 		{oc=[]; platform=["vga", "cirrus"]}, Vm.Cirrus;
 		{oc=[]; platform=["vga", "std"]}, Vm.Standard_VGA;
+		{oc=[]; platform=["vga", "igd_passthru"]}, Vm.IGD_Passthru;
 		(* We should be able to enable vGPU mode. *)
 		{oc=[]; platform=vgpu_platform_data}, Vm.Vgpu;
 		(* vGPU mode should override whatever's set for the "vga" key. *)

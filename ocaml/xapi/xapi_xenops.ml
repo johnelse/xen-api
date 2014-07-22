@@ -232,6 +232,7 @@ let builder_of_vm ~__context ~vm timeoffset pci_passthrough =
 		else
 			match string vm.API.vM_platform "cirrus" Platform.vga with
 			| "std" -> Standard_VGA
+			| "igd_passthru" -> IGD_Passthru
 			| "cirrus" -> Cirrus
 			| x ->
 				error "Unknown platform/vga option: %s (expected 'std' or 'cirrus')" x;

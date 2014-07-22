@@ -1639,6 +1639,7 @@ type disp_intf_opt =
     | Std_vga
     | Cirrus
     | Vgpu
+    | IGD_passthru
 with rpc
 
 (* Display output / keyboard input *)
@@ -1761,6 +1762,7 @@ let cmdline_of_disp info =
 	  match x with
 	    | Vgpu -> ["-vgpu"]
 	    | Std_vga -> ["-std-vga"]
+            | IGD_passthru -> ["-std-vga"; "-gfx_passthru"]
 	    | Cirrus -> []
 	in
 	let videoram_opt = ["-videoram"; string_of_int info.video_mib] in
