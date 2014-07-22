@@ -152,6 +152,13 @@ let update_pcis ~__context ~host =
 	let obsolete = List.set_difference existing current in
 	List.iter (fun (self, _) -> Db.PCI.destroy ~__context ~self) obsolete
 
+let get_pciback_devices () =
+  try
+    let dir = "/sys/bus/pci/drivers/pciback" in
+    let children = Array.to_list (Sys.readdir dir) in
+    List.filter (fun item -> String.startswith "0000" item) children
+  with _ -> []
+
 let get_system_display_device () =
 	try
 		let device = Unix.openfile "/dev/vga_arbiter" [Unix.O_RDONLY] 0o000 in

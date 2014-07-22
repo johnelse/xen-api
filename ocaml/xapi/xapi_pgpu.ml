@@ -45,10 +45,14 @@ let create ~__context ~pCI ~gPU_group ~host ~other_config ~supported_VGPU_types 
 	pgpu
 
 let update_gpus ~__context ~host =
-	let pci_id_blacklist =
+	let system_display_device_list =
 		match Xapi_pci.get_system_display_device () with
 		| Some device -> [device]
 		| None -> []
+	in
+	let pciback_devices = Xapi_pci.get_pciback_devices () in
+	let pci_id_blacklist = List.filter (fun self ->
+	  not (List.mem self pciback_devices)) system_display_device_list
 	in
 	let existing_pgpus = List.filter (fun (rf, rc) -> rc.API.pGPU_host = host) (Db.PGPU.get_all_records ~__context) in
 	let class_id = Xapi_pci.lookup_class_id Xapi_pci.Display_controller in
