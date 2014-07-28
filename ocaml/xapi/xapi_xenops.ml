@@ -219,7 +219,19 @@ let is_boot_file_whitelisted filename =
 		(* avoid ..-style attacks and other weird things *)
 	&&(safe_str filename)
 
-let builder_of_vm ~__context ~vm timeoffset pci_passthrough =
+let has_intel_igd_device ~__context pcis =
+  let open Db_filter_types in
+  let open Pci in
+  let pci_vendor_id = List.map ( fun dev ->
+    match Db.PCI.get_internal_records_where ~__context ~expr:(Eq (Field "pci_id", Literal (snd dev.id))) with
+    | (_, pci_rec) :: _ -> (pci_rec.Db_actions.pCI_vendor_id, pci_rec.Db_actions.pCI_device_id)
+    | [] -> ("0", "0")) pcis in
+  debug "Passed through devices: %s" (String.concat ", " (List.map (fun (vendor, device)  -> vendor ^ ":" ^ device) pci_vendor_id));
+  List.exists (fun (vendor, device) ->
+    (vendor = Xapi_globs.intel_vendor_id) && (List.mem device Xapi_globs.intel_integrated_gfx_devices))
+    pci_vendor_id
+
+let builder_of_vm ~__context ~vm timeoffset pcis =
 	let open Vm in
 
 	let video_mode =
@@ -230,6 +242,9 @@ let builder_of_vm ~__context ~vm timeoffset pci_passthrough =
 			&& (List.mem_assoc Platform.vgpu_config vm.API.vM_platform)
 		then Vgpu
 		else
+			if has_intel_igd_device ~__context pcis then
+				IGD_Passthru
+			else
 			match string vm.API.vM_platform "cirrus" Platform.vga with
 			| "std" -> Standard_VGA
 			| "igd_passthru" -> IGD_Passthru
@@ -284,7 +299,7 @@ let builder_of_vm ~__context ~vm timeoffset pci_passthrough =
 			keymap = Some (string vm.API.vM_platform "en-us" "keymap");
 			vnc_ip = None (*None PR-1255*);
 			pci_emulations = pci_emulations;
-			pci_passthrough = pci_passthrough;
+			pci_passthrough = pcis <> [];
 			boot_order = string vm.API.vM_HVM_boot_params "cd" "order";
 			qemu_disk_cmdline = bool vm.API.vM_platform false "qemu_disk_cmdline";
 			qemu_stubdom = bool vm.API.vM_platform false "qemu_stubdom";
@@ -485,7 +500,7 @@ module MD = struct
 			})
 			(List.combine (Range.to_list (Range.make 0 (List.length devs))) devs)
 
-	let of_vm ~__context (vmref, vm) vbds pci_passthrough =
+	let of_vm ~__context (vmref, vm) vbds pcis =
 		let on_crash_behaviour = function
 			| `preserve -> [ Vm.Pause ]
 			| `coredump_and_restart -> [ Vm.Coredump; Vm.Start ]
@@ -576,7 +591,7 @@ module MD = struct
 			xsdata = vm.API.vM_xenstore_data;
 			platformdata = platformdata;
 			bios_strings = vm.API.vM_bios_strings;
-			ty = builder_of_vm ~__context ~vm timeoffset pci_passthrough;
+			ty = builder_of_vm ~__context ~vm timeoffset pcis;
 			suppress_spurious_page_faults = (try List.assoc "suppress-spurious-page-faults" vm.API.vM_other_config = "true" with _ -> false);
 			machine_address_size = (try Some(int_of_string (List.assoc "machine-address-size" vm.API.vM_other_config)) with _ -> None);
 			memory_static_max = vm.API.vM_memory_static_max;
@@ -608,7 +623,7 @@ let generate_xenops_state ~__context ~self ~vm ~vbds ~pcis =
 			API.vM_VBDs = vm.API.vM_VBDs
 		} in
 		debug "Successfully parsed old last_booted_record format - translating to new format so that xenopsd can resume the VM.";
-		let vm = MD.of_vm ~__context (self, vm_to_resume) vbds (pcis <> []) in
+		let vm = MD.of_vm ~__context (self, vm_to_resume) vbds pcis in
 		let dbg = Context.string_of_task __context in
 		Client.VM.generate_state_string dbg vm
 	with Xml.Error _ ->
@@ -632,7 +647,7 @@ let create_metadata ~__context ~upgrade ~self =
 			Some(generate_xenops_state ~__context ~self ~vm ~vbds ~pcis)
 		end else None in
 	let open Metadata in {
-		vm = MD.of_vm ~__context (self, vm) vbds (pcis <> []);
+		vm = MD.of_vm ~__context (self, vm) vbds pcis;
 		vbds = vbds';
 		vifs = vifs';
 		pcis = pcis;

@@ -730,6 +730,15 @@ let redo_log_max_startup_time = ref 5.
 (** The delay between each attempt to connect to the block device I/O process *)
 let redo_log_connect_delay = ref 0.1
 
+(** Some Intel devices require the -gfx_passthru flag to be sent to qemu for the guests to function.  Used to auto-set vga=igd_passthru *)
+let intel_vendor_id = "8086"
+
+let hsw_classic = ["0402"; "0406"; "0412"; "0416"; "041e"]
+let hsw_ult = ["0a06"; "0a16"; "0a26"; "0a2e"; "0a1e"; "0a0e"]
+let hsw_crw = ["0d26"; "0d22"]
+let hsw_server = ["040a"; "041a"]
+let intel_integrated_gfx_devices = hsw_classic @ hsw_ult @ hsw_crw @ hsw_server
+
 let xapi_globs_spec =
 	[ "master_connection_reset_timeout",
 	  Config.Set_float master_connection_reset_timeout;
