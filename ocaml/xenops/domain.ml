@@ -115,14 +115,18 @@ let get_uuid ~xc domid =
 	Uuid.uuid_of_int_array (Xenctrl.domain_getinfo xc domid).Xenctrl.Domain_info.handle
 
 let wait_xen_free_mem ~xc ?(maximum_wait_time_seconds=64) required_memory_kib : bool =
+	debug "NVIDIA-237: in wait_xen_free_mem: waiting for %Ld kib" required_memory_kib;
 	let open Memory in
 	let rec wait accumulated_wait_time_seconds =
+		debug "NVIDIA-237: in wait: waited for %d" accumulated_wait_time_seconds;
 		let host_info = Xenctrl.physinfo xc in
 		let open Xenctrl.Phys_info in
 		let free_memory_kib =
 			kib_of_pages (Int64.of_nativeint host_info.free_pages) in
 		let scrub_memory_kib =
 			kib_of_pages (Int64.of_nativeint host_info.scrub_pages) in
+		debug "NVIDIA-237: got free memory = %Ld kib" free_memory_kib;
+		debug "NVIDIA-237: got scrub memory = %Ld kib" scrub_memory_kib;
 		(* At exponentially increasing intervals, write  *)
 		(* a debug message saying how long we've waited: *)
 		if is_power_of_2 accumulated_wait_time_seconds then debug
