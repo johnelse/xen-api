@@ -858,8 +858,6 @@ module VM = struct
 	) Newest task vm
 
 	let set_vcpus task vm target = on_domain (fun xc xs _ _ di ->
-		if di.hvm_guest then raise (Unimplemented("vcpu hotplug for HVM domains"));
-
 		let domid = di.domid in
 		(* Returns the instantaneous CPU number from xenstore *)
 		let current =
@@ -1117,8 +1115,11 @@ module VM = struct
 				let m = Printf.sprintf "VM = %s; domid = %d; Bootloader.Error_from_bootloader %s" vm.Vm.id domid x in
 				debug "%s" m;
 				raise (Bootloader_error (vm.Vm.id, x))
+			| Domain.Not_enough_memory m ->
+				debug "VM = %s; domid = %d; Domain.Not_enough_memory. Needed: %Ld bytes" vm.Vm.id domid m;
+				raise (Not_enough_memory m)
 			| e ->
-				let m = Printf.sprintf "VM = %s; domid = %d; Bootloader error: %s" vm.Vm.id domid (Printexc.to_string e) in
+				let m = Printf.sprintf "VM = %s; domid = %d; Error: %s" vm.Vm.id domid (Printexc.to_string e) in
 				debug "%s" m;
 				raise e
 
@@ -2189,6 +2190,7 @@ module Actions = struct
 			sprintf "/local/domain/%d/memory/uncooperative" domid;
 			sprintf "/local/domain/%d/console/vnc-port" domid;
 			sprintf "/local/domain/%d/console/tc-port" domid;
+			sprintf "/local/domain/%d/control" domid;
 			sprintf "/local/domain/%d/device" domid;
 			sprintf "/local/domain/%d/vm-data" domid;
 			sprintf "/vm/%s/rtc/timeoffset" uuid;

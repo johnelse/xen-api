@@ -633,6 +633,10 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 			info "VM_appliance.assert_can_be_recovered: VM_appliance = '%s'" (vm_appliance_uuid ~__context self);
 			Local.VM_appliance.assert_can_be_recovered ~__context ~self ~session_to
 
+		let get_SRs_required_for_recovery ~__context ~self ~session_to =
+			info "VM_appliance.get_SRs_required_for_recovery: VM_appliance = '%s'" (vm_appliance_uuid ~__context self);
+			Local.VM_appliance.get_SRs_required_for_recovery ~__context ~self ~session_to
+
 		let recover ~__context ~self ~session_to ~force =
 			info "VM_appliance.recover: VM_appliance = '%s'" (vm_appliance_uuid ~__context self);
 			Local.VM_appliance.recover ~__context ~self ~session_to ~force
@@ -1964,6 +1968,10 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 		let assert_can_be_recovered ~__context ~self ~session_to =
 			info "VM.assert_can_be_recovered: self = '%s';" (vm_uuid ~__context self);
 			Local.VM.assert_can_be_recovered ~__context ~self ~session_to
+
+		let get_SRs_required_for_recovery ~__context ~self ~session_to =
+			info "VM.get_SRs_required_for_recovery: self = '%s';" (vm_uuid ~__context self);
+			Local.VM.get_SRs_required_for_recovery ~__context ~self ~session_to
 
 		let recover ~__context ~self ~session_to ~force =
 			info "VM.recover: self = '%s'; force = %b;" (vm_uuid ~__context self) force;
@@ -3308,6 +3316,21 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 				(fun () ->
 					forward_vdi_op ~local_fn ~__context ~self:vdi
 						(fun session_id rpc -> Client.VDI.clone rpc session_id vdi driver_params))
+
+		let revert ~__context ~snapshot ~driver_params =
+			info "VDI.revert: snapshot = '%s'" (vdi_uuid ~__context snapshot);
+			let vdi = Db.VDI.get_snapshot_of ~__context ~self:snapshot in
+			let local_fn = Local.VDI.revert ~snapshot ~driver_params in
+			let sR = Db.VDI.get_SR ~__context ~self:snapshot in
+			with_sr_andor_vdi ~__context
+				~sr:(sR, `vdi_revert) ~vdi:(snapshot, `revert) ~doc:"VDI.revert"
+				(fun () ->
+					with_sr_andor_vdi ~__context
+						~vdi:(vdi, `reverting) ~doc:"VDI.reverting"
+						(fun () ->
+							forward_vdi_op ~local_fn ~__context ~self:snapshot
+								(fun session_id rpc ->
+									Client.VDI.revert rpc session_id snapshot driver_params)))
 
 		let copy ~__context ~vdi ~sr ~base_vdi ~into_vdi =
 			info "VDI.copy: VDI = '%s'; SR = '%s'; base_vdi = '%s'; into_vdi = '%s'" (vdi_uuid ~__context vdi) (sr_uuid ~__context sr) (vdi_uuid ~__context base_vdi) (vdi_uuid ~__context into_vdi);

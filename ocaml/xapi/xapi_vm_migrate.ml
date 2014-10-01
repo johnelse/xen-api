@@ -67,16 +67,14 @@ let get_ip_from_url url =
 		| Http.Url.Http { Http.Url.host = host }, _ -> host
 		| _, _ -> failwith (Printf.sprintf "Cannot extract foreign IP address from: %s" url) 
 
-let rec migrate_with_retries max try_no dbg vm_uuid xenops_vdi_map xenops_vif_map xenops =
+let rec migrate_with_retries ~__context max try_no dbg vm_uuid xenops_vdi_map xenops_vif_map xenops =
 	let open Xenops_client in
 	let progress = ref "(none yet)" in
 	let f () =
 		progress := "XenopsAPI.VM.migrate";
 		let t1 = XenopsAPI.VM.migrate dbg vm_uuid xenops_vdi_map xenops_vif_map xenops in
-		progress := "wait_for_task";
-		let t2 = wait_for_task dbg t1 in
-		progress := "success_task";
-		ignore (success_task dbg t2)
+		progress := "sync_with_task";
+		ignore (Xapi_xenops.sync_with_task __context t1)
 	in
 	if try_no >= max then
 		f ()
@@ -85,17 +83,27 @@ let rec migrate_with_retries max try_no dbg vm_uuid xenops_vdi_map xenops_vif_ma
 		(* CA-86347 Handle the excn if the VM happens to reboot during migration.
 		 * Such a reboot causes Xenops_interface.Cancelled the first try, then
 		 * Xenops_interface.Internal_error("End_of_file") the second, then success. *)
-		with e ->
-			let extra = match e with
-					| Xenops_interface.Cancelled s -> " (expected if the VM shuts down)"
-					| _ -> "" in
-			info "xenops: will retry migration: caught %s%s from %s in attempt %d of %d."
-				(Printexc.to_string e) extra !progress try_no max;
-			migrate_with_retries max (try_no + 1) dbg vm_uuid xenops_vdi_map xenops_vif_map xenops
+		with 
+		(* User cancelled migration *)
+		| Xenops_interface.Cancelled _ as e when TaskHelper.is_cancelling ~__context ->
+			debug "xenops: Migration cancelled by user.";
+			raise e
+
+		(* VM rebooted during migration - first raises Cancelled, then Internal_error  "End_of_file" *)
+		| Xenops_interface.Cancelled _
+		| Xenops_interface.Internal_error "End_of_file" as e ->
+			debug "xenops: will retry migration: caught %s from %s in attempt %d of %d." (Printexc.to_string e) !progress try_no max;
+			migrate_with_retries ~__context max (try_no + 1) dbg vm_uuid xenops_vdi_map xenops_vif_map xenops
+
+		(* Something else went wrong *)
+		| e -> 
+			debug "xenops: not retrying migration: caught %s from %s in attempt %d of %d."
+				(Printexc.to_string e) !progress try_no max;
+			raise e
 	end
 
-let migrate_with_retry dbg vm_uuid xenops_vdi_map xenops_vif_map xenops =
-	migrate_with_retries 3 1 dbg vm_uuid xenops_vdi_map xenops_vif_map xenops
+let migrate_with_retry ~__context dbg vm_uuid xenops_vdi_map xenops_vif_map xenops =
+	migrate_with_retries ~__context 3 1 dbg vm_uuid xenops_vdi_map xenops_vif_map xenops
 
 let pool_migrate ~__context ~vm ~host ~options =
 	let dbg = Context.string_of_task __context in
@@ -109,7 +117,7 @@ let pool_migrate ~__context ~vm ~host ~options =
 			Xapi_xenops.with_events_suppressed ~__context ~self:vm (fun () ->
 				(* XXX: PR-1255: the live flag *)
 				info "xenops: VM.migrate %s to %s" vm' xenops_url;
-				migrate_with_retry dbg vm' [] [] xenops_url;
+				migrate_with_retry ~__context dbg vm' [] [] xenops_url;
 				(* Delete all record of this VM locally (including caches) *)
 				Xapi_xenops.Xenopsd_metadata.delete ~__context vm';
 				(* Flush xenopsd events through: we don't want the pool database to
@@ -117,7 +125,12 @@ let pool_migrate ~__context ~vm ~host ~options =
 				Xapi_xenops.Events_from_xenopsd.wait dbg vm' ()
 			)
 		);
-	with e ->
+	with 
+	| Xenops_interface.Failed_to_acknowledge_shutdown_request ->
+		raise (Api_errors.Server_error (Api_errors.vm_failed_shutdown_ack, []))
+	| Xenops_interface.Cancelled _ ->
+		raise (Api_errors.Server_error (Api_errors.task_cancelled, []))
+	| e ->
 		error "xenops: VM.migrate %s: caught %s" vm' (Printexc.to_string e);
 		(* We do our best to tidy up the state left behind *)
 		let _, state = XenopsAPI.VM.stat dbg vm' in
@@ -142,10 +155,7 @@ let pool_migrate_complete ~__context ~vm ~host =
 	debug "VM.pool_migrate_complete %s" id;
 	let dbg = Context.string_of_task __context in
 	if Xapi_xenops.vm_exists_in_xenopsd dbg id then begin
-		Helpers.call_api_functions ~__context
-			(fun rpc session_id ->
-				XenAPI.VM.atomic_set_resident_on rpc session_id vm host
-			);
+		Xapi_xenops.set_resident_on ~__context ~self:vm;
 		Xapi_xenops.add_caches id;
 		Xapi_xenops.refresh_vm ~__context ~self:vm;
 		Monitor_dbcalls.clear_cache_for_vm ~vm_uuid:id
@@ -367,6 +377,20 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 							failwith ("No SR specified in VDI map for VDI " ^ vdi_uuid)
 				in
 
+			(* Plug the destination shared SR into destination host and pool master if unplugged.
+			   Plug the local SR into destination host only if unplugged *)
+			let master_host =
+				let pool = List.hd (XenAPI.Pool.get_all remote_rpc session_id) in
+				XenAPI.Pool.get_master remote_rpc session_id pool in
+			let pbds = XenAPI.SR.get_PBDs remote_rpc session_id dest_sr_ref in
+			let pbd_host_pair = List.map (fun pbd -> (pbd, XenAPI.PBD.get_host remote_rpc session_id pbd)) pbds in
+			let hosts_to_be_attached = [master_host; Ref.of_string dest_host] in
+			let pbds_to_be_plugged = List.filter (fun (_, host) -> 
+				(List.mem host hosts_to_be_attached) && (XenAPI.Host.get_enabled remote_rpc session_id host)) pbd_host_pair in
+			List.iter (fun (pbd, _) ->
+				if not (XenAPI.PBD.get_currently_attached remote_rpc session_id pbd) then
+					XenAPI.PBD.plug remote_rpc session_id pbd) pbds_to_be_plugged;
+
 
 			let rec dest_vdi_exists_on_sr vdi_uuid sr_ref retry =
 				try
@@ -562,7 +586,7 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
 			try
 				Xapi_xenops.with_events_suppressed ~__context ~self:vm
 					(fun () ->
-						migrate_with_retry dbg vm_uuid xenops_vdi_map xenops_vif_map xenops;
+						migrate_with_retry ~__context dbg vm_uuid xenops_vdi_map xenops_vif_map xenops;
 						Xapi_xenops.Xenopsd_metadata.delete ~__context vm_uuid;
 						Xapi_xenops.Events_from_xenopsd.wait dbg vm_uuid ())
 			with

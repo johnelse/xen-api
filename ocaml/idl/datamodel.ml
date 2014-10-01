@@ -57,6 +57,9 @@ let vgpu_productisation_release_schema_minor_vsn = 69
 let clearwater_felton_release_schema_major_vsn = 5
 let clearwater_felton_release_schema_minor_vsn = 70
 
+let clearwater_whetstone_release_schema_major_vsn = 5
+let clearwater_whetstone_release_schema_minor_vsn = 71
+
 let creedence_release_schema_major_vsn = 5
 let creedence_release_schema_minor_vsn = 72
 
@@ -604,6 +607,12 @@ let _ =
     ~doc:"You attempted an operation on a VM which requires PV drivers to be installed but the drivers were not detected." ();
   error Api_errors.vm_old_pv_drivers [ "vm"; "major"; "minor" ]
     ~doc:"You attempted an operation on a VM which requires a more recent version of the PV drivers. Please upgrade your PV drivers." ();
+  error Api_errors.vm_lacks_feature_shutdown [ "vm" ]
+	  ~doc:"You attempted an operation which needs the cooperative shutdown feature on a VM which lacks it." ();
+  error Api_errors.vm_lacks_feature_vcpu_hotplug [ "vm" ]
+	  ~doc:"You attempted an operation which needs the VM hotplug-vcpu feature on a VM which lacks it." ();
+  error Api_errors.vm_lacks_feature_suspend [ "vm" ]
+	  ~doc:"You attempted an operation which needs the VM cooperative suspend feature on a VM which lacks it." ();
   error Api_errors.vm_is_template ["vm"]
     ~doc:"The operation attempted is not valid for a template VM" ();
   error Api_errors.other_operation_in_progress ["class"; "object"]
@@ -897,6 +906,8 @@ let _ =
 
 
   (* Storage errors *)
+  error Api_errors.sr_not_attached ["sr"]
+    ~doc:"The SR is not attached." ();
   error Api_errors.sr_attach_failed ["sr"]
     ~doc:"Attaching this SR failed." ();
   error Api_errors.sr_backend_failure ["status"; "stdout"; "stderr"]
@@ -2047,7 +2058,7 @@ let vm_pool_migrate = call
   ~params:[Ref _vm, "vm", "The VM to migrate";
 	   Ref _host, "host", "The target host";
 	   Map(String, String), "options", "Extra configuration operations" ]
-  ~errs:[Api_errors.vm_bad_power_state; Api_errors.other_operation_in_progress; Api_errors.vm_is_template; Api_errors.operation_not_allowed; Api_errors.vm_migrate_failed; Api_errors.vm_missing_pv_drivers]
+  ~errs:[Api_errors.vm_bad_power_state; Api_errors.other_operation_in_progress; Api_errors.vm_is_template; Api_errors.operation_not_allowed; Api_errors.vm_migrate_failed]
   ~allowed_roles:_R_VM_POWER_ADMIN
   ()
 
@@ -2276,6 +2287,17 @@ let vm_assert_can_be_recovered = call
   ~errs:[Api_errors.vm_is_part_of_an_appliance; Api_errors.vm_requires_sr]
   ~allowed_roles:_R_READ_ONLY
   ()
+
+let vm_get_SRs_required_for_recovery = call
+	~name:"get_SRs_required_for_recovery"
+	~in_product_since:rel_creedence
+	~doc:"List all the SR's that are required for the VM to be recovered"
+	~params:[Ref _vm , "self" , "The VM for which the SRs have to be recovered";
+					Ref _session , "session_to" , "The session to which the SRs of the VM have to be recovered."]
+	~result:(Set(Ref _sr),"refs for SRs required to recover the VM")
+	~errs:[]
+	~allowed_roles:_R_READ_ONLY
+	()
 
 let vm_recover = call
   ~name:"recover"
@@ -2948,6 +2970,29 @@ let vdi_clone = call
   ~result:(Ref _vdi, "The ID of the newly created VDI.")
   ~allowed_roles:_R_VM_ADMIN
   ()
+
+let vdi_revert = call
+	~name:"revert"
+	~in_oss_since:None
+	~in_product_since:rel_creedence
+	~versioned_params:[{
+		param_type=Ref _vdi;
+		param_name="snapshot";
+		param_doc="The snapshot to which we want to revert";
+		param_release=creedence_release;
+		param_default=None
+	};
+	{
+		param_type=Map (String, String);
+		param_name="driver_params";
+		param_doc="Optional parameters that are passed through to the backend driver in order to specify storage-type-specific clone options";
+		param_release=creedence_release;
+		param_default=Some (VMap []);
+	}]
+	~doc:"Clone a new VDI from the specified snapshot; mark all snapshots in the tree of snapshots of this new VDI; delete the original VDI these snapshots were pointing at; return the new VDI."
+	~result:(Ref _vdi, "The ID of the newly created VDI.")
+	~allowed_roles:_R_VM_POWER_ADMIN
+	()
 
 let vdi_resize = call
   ~name:"resize"
@@ -5143,7 +5188,8 @@ let storage_operations =
 	  "vdi_clone", "Cloneing a VDI"; 
 	  "vdi_snapshot", "Snapshotting a VDI";
 	  "pbd_create", "Creating a PBD for this SR";
-	  "pbd_destroy", "Destroying one of this SR's PBDs"; ])
+	  "pbd_destroy", "Destroying one of this SR's PBDs";
+	  "vdi_revert", "Reverting a VDI to a clone of this snapshot"; ])
 
 let sr_set_virtual_allocation = call
    ~name:"set_virtual_allocation"
@@ -5422,6 +5468,8 @@ let vdi_operations =
 	  "force_unlock", "Forcibly unlocking the VDI";
 	  "generate_config", "Generating static configuration";
 	  "blocked", "Operations on this VDI are temporarily blocked";
+	  "revert", "Reverting a VDI to a clone of this snapshot";
+	  "reverting", "Reverting this VDI to a clone of one of its snapshots";
 	])
 
 let vdi_set_missing = call
@@ -5632,7 +5680,11 @@ let vdi =
       ~gen_events:true
       ~doccomments:[]
       ~messages_default_allowed_roles:_R_VM_ADMIN
-      ~messages:[vdi_snapshot; vdi_clone; vdi_resize; 
+      ~messages:[
+		 vdi_snapshot;
+		 vdi_clone;
+		 vdi_revert;
+		 vdi_resize;
 		 vdi_resize_online;
 		 vdi_introduce; vdi_pool_introduce;
 		 vdi_db_introduce; vdi_db_forget;
@@ -6781,6 +6833,7 @@ let vm =
 		vm_set_order;
 		vm_set_suspend_VDI;
 		vm_assert_can_be_recovered;
+		vm_get_SRs_required_for_recovery;
 		vm_recover;
 		vm_import_convert;
 		vm_set_appliance;
@@ -7305,6 +7358,16 @@ let vm_appliance =
 		~doc:"Assert whether all SRs required to recover this VM appliance are available."
 		~allowed_roles:_R_READ_ONLY
 		() in
+	let vm_appliance_get_SRs_required_for_recovery = call
+		~name:"get_SRs_required_for_recovery"
+		~in_product_since:rel_creedence
+		~params:[Ref _vm_appliance , "self" , "The VM appliance for which the required list of SRs has to be recovered.";
+			Ref _session , "session_to", "The session to which the list of SRs have to be recovered ."]
+		~result:(Set(Ref _sr), "refs for SRs required to recover the VM")
+		~errs:[]
+		~doc:"Get the list of SRs required by the VM appliance to recover."
+		~allowed_roles:_R_READ_ONLY
+		() in
 	let vm_appliance_recover = call
 		~name:"recover"
 		~in_product_since:rel_boston
@@ -7325,6 +7388,7 @@ let vm_appliance =
 			vm_appliance_hard_shutdown;
 			vm_appliance_shutdown;
 			vm_appliance_assert_can_be_recovered;
+			vm_appliance_get_SRs_required_for_recovery;
 			vm_appliance_recover;
 		]
 		~contents:([
@@ -7696,9 +7760,9 @@ let pci =
 			field ~qualifier:DynamicRO ~ty:(Set (Ref _pci)) ~lifecycle:[Published, rel_boston, ""] "dependencies" "List of dependent PCI devices" ~ignore_foreign_key:true;
 			field ~qualifier:RW ~ty:(Map (String,String)) ~lifecycle:[Published, rel_boston, ""] "other_config" "Additional configuration" ~default_value:(Some (VMap []));
 			field ~qualifier:StaticRO ~ty:String ~lifecycle:[] "subsystem_vendor_id" "Subsystem vendor ID" ~default_value:(Some (VString "")) ~internal_only:true;
-			field ~qualifier:StaticRO ~ty:String ~lifecycle:[Published, rel_creedence, ""] "subsystem_vendor_name" "Subsystem vendor name" ~default_value:(Some (VString ""));
+			field ~qualifier:StaticRO ~ty:String ~lifecycle:[Published, rel_clearwater_whetstone, ""] "subsystem_vendor_name" "Subsystem vendor name" ~default_value:(Some (VString ""));
 			field ~qualifier:StaticRO ~ty:String ~lifecycle:[] "subsystem_device_id" "Subsystem device ID" ~default_value:(Some (VString "")) ~internal_only:true;
-			field ~qualifier:StaticRO ~ty:String ~lifecycle:[Published, rel_creedence, ""] "subsystem_device_name" "Subsystem device name" ~default_value:(Some (VString ""));
+			field ~qualifier:StaticRO ~ty:String ~lifecycle:[Published, rel_clearwater_whetstone, ""] "subsystem_device_name" "Subsystem device name" ~default_value:(Some (VString ""));
 			]
 		()
 

@@ -98,7 +98,7 @@ let to_linux_device =
 	function
 		| Xen,  disk, part -> Printf.sprintf "xvd%s%s" (string_of_int26 disk) (p part)
 		| Scsi, disk, part -> Printf.sprintf "sd%s%s"  (string_of_int26 disk) (p part)
-		| Ide,  disk, part -> Printf.sprintf "hd%s%s"  (string_of_int26 disk) (p part)
+		| Ide,  disk, part -> Printf.sprintf "xvd%s%s"  (string_of_int26 disk) (p part)
 
 let of_linux_device x =
 	let letter c = 'a' <= c && (c <= 'z') in
@@ -142,7 +142,12 @@ let of_linux_device x =
 			let disk, partition = parse_int_p_int rest in
 			Xen, disk, partition
 		| _ -> failwith (Printf.sprintf "Failed to parse device name: %s" x)
-	
+
+let upgrade_linux_device x =
+	match String.explode x with
+	| 'h' :: 'd' :: rest -> "xvd" ^ (String.implode rest)
+	| _ -> x
+
 type disk_number = int
 
 let to_disk_number = function

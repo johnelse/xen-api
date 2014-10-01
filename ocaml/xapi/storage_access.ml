@@ -448,6 +448,7 @@ module SMAPIv1 = struct
 						in
 						Db.VDI.set_name_label ~__context ~self ~value:vdi_info.name_label;
 						Db.VDI.set_name_description ~__context ~self ~value:vdi_info.name_description;
+						Db.VDI.set_snapshot_time ~__context ~self ~value:(Date.of_string vdi_info.snapshot_time);
 						Db.VDI.remove_from_other_config ~__context ~self ~key:"content_id";
 						Db.VDI.add_to_other_config ~__context ~self ~key:"content_id" ~value:content_id;
 						debug "copying sm-config";
@@ -491,6 +492,23 @@ module SMAPIv1 = struct
 				| No_VDI ->
 					raise (Vdi_does_not_exist vdi)
 				| Sm.MasterOnly -> redirect sr
+
+		let revert context ~dbg ~sr ~snapshot_info =
+			Server_helpers.exec_with_new_task "VDI.revert" ~subtask_of:(Ref.of_string dbg)
+				(fun __context ->
+					(* Clone the snapshot. *)
+					let new_vdi_info = clone context ~dbg ~sr ~vdi_info:snapshot_info in
+					(* Update snapshot links. *)
+					let vdi_ref = Db.VDI.get_by_uuid ~__context ~uuid:snapshot_info.snapshot_of in
+					let new_vdi_ref = Db.VDI.get_by_uuid ~__context ~uuid:new_vdi_info.vdi in
+					let snapshot_refs = Db.VDI.get_snapshots ~__context ~self:vdi_ref in
+					List.iter
+						(fun snapshot_ref -> Db.VDI.set_snapshot_of ~__context ~self:snapshot_ref ~value:new_vdi_ref)
+						snapshot_refs;
+					(* Destroy the original VDI. *)
+					destroy context ~dbg ~sr ~vdi:snapshot_info.snapshot_of;
+					(* Return the new VDI. *)
+					new_vdi_info)
 
 		let stat context ~dbg ~sr ~vdi =
 			try

@@ -20,19 +20,48 @@ end
 
 open M
 
+let (|>) a f = f a
+
 module Xenops_record = struct
 	type t = {
 		time: string;
 		word_size: int;
-	} with rpc
+		xs_subtree: (string * string) list option;
+	}
 
-	let make () =
-		let word_size = Sys.word_size
-		and time = Date.(to_string (of_float (Unix.time ()))) in
-		{ word_size; time }
-	
-	let to_string t = Jsonrpc.to_string (rpc_of_t t)
-	let of_string s = t_of_rpc (Jsonrpc.of_string s)
+	let make ?xs_subtree () =
+		let time = Date.(to_string (of_float (Unix.time ()))) in
+		let word_size = Sys.word_size in
+		{ word_size; time; xs_subtree }
+
+	(* This needs to be compatible with usptream Xenopsd which uses sexplib
+	 * which cannot be ported to this branch. As such the following is an
+	 * recreation of what would happen when calling:
+	 *     sexp_of_t t |> Sexplib.Sexp.to_string
+	 * and has been tested in utop by chaining this function with sexplib like:
+	 *     to_string t |> Sexplib.Sexp.of_string |> t_of_sexp
+	 * and checking that we get t back where sexp_of_t and t_of_sexp are the
+	 * result of the following type definition with syntax extension upstream:
+	 *     type t = {
+	 *       time: string;
+	 *       word_size: int;
+	 *       xs_subtree: (string * string) list sexp_option;
+	 *     } with sexp
+	 * Upsteam may grow to have more fields, but as long as these have the
+	 * sexp_option modifier then what we produce will be parsed correctly *)
+	let to_string t =
+		Printf.sprintf "((time %s)(word_size %d)%s)"
+		t.time t.word_size
+		begin match t.xs_subtree with
+		| None -> ""
+		| Some entries ->
+			List.map (fun (k, v) ->
+				Printf.sprintf "(\"%s\" \"%s\")"
+				(String.escaped k) (String.escaped v)
+			) entries
+			|> String.concat ""
+			|> Printf.sprintf "(xs_subtree(%s))"
+		end
 end
 
 
@@ -117,7 +146,7 @@ let write_header fd (hdr_type, len) =
 	write_int64 fd (int64_of_header_type hdr_type) >>= fun () ->
 	write_int64 fd len
 
-let conv_script = "/usr/lib64/xen/bin/legacy.py"
+let conv_script = "/usr/lib64/xen/bin/convert-legacy-stream"
 
 let check_conversion_script () =
 	let open Unix in
@@ -139,7 +168,7 @@ let with_conversion_script task name hvm fd f =
 		[ "--in"; fd_uuid; "--out"; pipe_w_uuid;
 			"--width"; "32"; "--skip-qemu";
 			"--guest-type"; if hvm then "hvm" else "pv";
-			"--syslog";
+			"--syslog"; "--verbose";
 		]
 	in
 	let (m, c) = Mutex.create (), Condition.create () in
@@ -165,7 +194,9 @@ let with_conversion_script task name hvm fd f =
 		(thread, status)
 	in
 	let (conv_th, conv_st) =
-		spawn_thread_and_close_fd "legacy.py" pipe_w (fun () ->
+		spawn_thread_and_close_fd "convert-legacy-stream" pipe_w (fun () ->
+			debug "Executing %s with args [ %s ]"
+				conv_script (String.concat "; " args);
 			Cancel_utils.cancellable_subprocess task
 				[ fd_uuid, fd; pipe_w_uuid, pipe_w; ] conv_script args
 		)
@@ -177,8 +208,20 @@ let with_conversion_script task name hvm fd f =
 	debug "Spawned threads for conversion script and %s" name;
 	let rec handle_threads () = match (!conv_st, !f_st) with
 	| Thread_failure e, _ ->
-		`Error (Failure (Printf.sprintf "Conversion script thread caught exception: %s"
-			(Printexc.to_string e)))
+		begin match e with
+		| Forkhelpers.Spawn_internal_error(_,_,status) ->
+			begin match status with
+			| Unix.WEXITED n ->
+				`Error (Failure (Printf.sprintf "Conversion script exited with code %d" n))
+			| Unix.WSIGNALED n ->
+				`Error (Failure (Printf.sprintf "Conversion script exited with signal %s" (Unixext.string_of_signal n)))
+			| Unix.WSTOPPED n ->
+				`Error (Failure (Printf.sprintf "Conversion script stopped with signal %s" (Unixext.string_of_signal n)))
+			end
+		| _ ->
+			`Error (Failure (Printf.sprintf "Conversion script thread caught exception: %s"
+				(Printexc.to_string e)))
+		end
 	| _, Thread_failure e ->
 		`Error (Failure (Printf.sprintf "Thread executing %s caught exception: %s"
 			name (Printexc.to_string e)))

@@ -59,6 +59,13 @@ module Sysfs = struct
 		let all = Array.to_list (Sys.readdir "/sys/class/net") in
 		List.filter (fun name -> Sys.is_directory ("/sys/class/net/" ^ name)) all
 
+	let list_drivers () =
+		try
+			Array.to_list (Sys.readdir "/sys/bus/pci/drivers")
+		with _ ->
+			warn "Failed to obtain list of drivers from sysfs";
+			[]
+
 	let getpath dev attr =
 		Printf.sprintf "/sys/class/net/%s/%s" dev attr
 
@@ -643,6 +650,12 @@ module Ovs = struct
 			let nb_links = List.fold_left (fun acc line -> acc + (check_line line)) 0 lines in
 			nb_links
 		with _ -> 0
+
+	let set_max_idle t =
+		try
+			ignore (vsctl ["set"; "Open_vSwitch"; "."; Printf.sprintf "other_config:max-idle=%d" t])
+		with _ ->
+			warn "Failed to set max-idle=%d on OVS" t
 
 	let handle_vlan_bug_workaround override bridge =
 		(* This is a list of drivers that do support VLAN tx or rx acceleration, but

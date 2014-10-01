@@ -69,7 +69,9 @@ let filtered_xsdata =
 	List.filter allowed
 
 exception Suspend_image_failure
+exception Not_enough_memory of int64
 exception Domain_build_failed
+exception Domain_build_pre_failed of string
 exception Domain_restore_failed
 exception Domain_restore_truncated_hvmstate
 exception Xenguest_protocol_failure of string (* internal protocol failure *)
@@ -454,6 +456,13 @@ let get_action_request ~xs domid =
 		Some (xs.Xs.read path)
 	with Xenbus.Xb.Noent -> None
 
+let maybe_ca_140252_workaround ~xc ~vcpus domid =
+	if !Xenops_utils.ca_140252_workaround then
+		debug "Allocating %d I/O req evtchns in advance for device model" vcpus;
+		for i = 1 to vcpus do
+			ignore_int (Xenctrl.evtchn_alloc_unbound xc domid 0)
+		done
+
 (** create store and console channels *)
 let create_channels ~xc uuid domid =
 	let store = Xenctrl.evtchn_alloc_unbound xc domid 0 in
@@ -465,7 +474,11 @@ let build_pre ~xc ~xs ~vcpus ~xen_max_mib ~shadow_mib ~required_host_free_mib do
 	let uuid = get_uuid ~xc domid in
 	debug "VM = %s; domid = %d; waiting for %Ld MiB of free host memory" (Uuid.to_string uuid) domid required_host_free_mib;
 	(* CA-39743: Wait, if necessary, for the Xen scrubber to catch up. *)
-	let (_: bool) = wait_xen_free_mem ~xc (Memory.kib_of_mib required_host_free_mib) in
+	if not(wait_xen_free_mem ~xc (Memory.kib_of_mib required_host_free_mib)) then begin
+		error "VM = %s; domid = %d; Failed waiting for Xen to free %Ld MiB"
+			(Uuid.to_string uuid) domid required_host_free_mib;
+		raise (Not_enough_memory (Memory.bytes_of_mib required_host_free_mib))
+	end;
 
 	let shadow_mib = Int64.to_int shadow_mib in
 
@@ -473,35 +486,38 @@ let build_pre ~xc ~xs ~vcpus ~xen_max_mib ~shadow_mib ~required_host_free_mib do
 	let read_platform flag = xs.Xs.read (dom_path ^ "/platform/" ^ flag) in
 	let int_platform_flag flag = try Some (int_of_string (read_platform flag)) with _ -> None in
 	let timer_mode = int_platform_flag "timer_mode" in
-	let hpet = int_platform_flag "hpet" in
-	let vpt_align = int_platform_flag "vpt_align" in
 
-	let maybe_exn_ign name f opt =
-          maybe (fun opt -> try f opt with exn -> warn "exception setting %s: %s" name (Printexc.to_string exn)) opt
-        in
+	let log_reraise call_str f =
+		debug "VM = %s; domid = %d; %s" (Uuid.to_string uuid) domid call_str;
+		try ignore (f ())
+		with e ->
+			let err_msg =
+				Printf.sprintf "Calling '%s' failed: %s" call_str (Printexc.to_string e)
+			in
+			error "VM = %s; domid = %d; %s" (Uuid.to_string uuid) domid err_msg;
+			raise (Domain_build_pre_failed err_msg)
+	in
 
-	maybe_exn_ign "timer mode" (fun mode ->
-		debug "VM = %s; domid = %d; domain_set_timer_mode %d" (Uuid.to_string uuid) domid mode;
-		Xenctrlext.domain_set_timer_mode xc domid mode
+	maybe (fun mode ->
+		log_reraise (Printf.sprintf "domain_set_timer_mode %d" mode) (fun () ->
+			Xenctrlext.domain_set_timer_mode xc domid mode
+		)
 	) timer_mode;
-    maybe_exn_ign "hpet" (fun hpet -> 
-		debug "VM = %s; domid = %d; domain_set_hpet %d" (Uuid.to_string uuid) domid hpet;
-		Xenctrlext.domain_set_hpet xc domid hpet
-	) hpet;
-    maybe_exn_ign "vpt align" (fun vpt_align ->
-		debug "VM = %s; domid = %d; domain_set_vpt_align %d" (Uuid.to_string uuid) domid vpt_align;
-		Xenctrlext.domain_set_vpt_align xc domid vpt_align
-	) vpt_align;
-	debug "VM = %s; domid = %d; domain_max_vcpus %d" (Uuid.to_string uuid) domid vcpus;
-	Xenctrl.domain_max_vcpus xc domid vcpus;
-	let di = Xenctrl.domain_getinfo xc domid in
-	if not (di.Xenctrl.Domain_info.hvm_guest) then
-		begin
-			debug "VM = %s; domid = %d; domain_set_memmap_limit %Ld MiB" (Uuid.to_string uuid) domid xen_max_mib;
-			Xenctrl.domain_set_memmap_limit xc domid (Memory.kib_of_mib xen_max_mib);
-		end;
-	debug "VM = %s; domid = %d; shadow_allocation_set %d MiB" (Uuid.to_string uuid) domid shadow_mib;
-	Xenctrl.shadow_allocation_set xc domid shadow_mib;
+
+	log_reraise (Printf.sprintf "domain_max_vcpus %d" vcpus) (fun () ->
+		Xenctrl.domain_max_vcpus xc domid vcpus
+	);
+
+	if not (Xenctrl.((domain_getinfo xc domid).Domain_info.hvm_guest)) then begin
+		let kib = Memory.kib_of_mib xen_max_mib in
+		log_reraise (Printf.sprintf "domain_set_memmap_limit %Ld KiB" kib) (fun () ->
+			Xenctrl.domain_set_memmap_limit xc domid kib
+		)
+	end;
+
+	log_reraise (Printf.sprintf "shadow_allocation_set %d MiB" shadow_mib) (fun () ->
+		Xenctrl.shadow_allocation_set xc domid shadow_mib
+	);
 
 	create_channels ~xc uuid domid
 
@@ -634,6 +650,7 @@ let build_hvm (task: Xenops_task.t) ~xc ~xs ~static_max_kib ~target_kib ~shadow_
 	let required_host_free_mib =
 		Memory.HVM.footprint_mib target_mib static_max_mib vcpus shadow_multiplier in
 
+	maybe_ca_140252_workaround ~xc ~vcpus domid;
 	let store_port, console_port = build_pre ~xc ~xs
 		~xen_max_mib ~shadow_mib ~required_host_free_mib ~vcpus domid in
 
@@ -676,10 +693,8 @@ let build_hvm (task: Xenops_task.t) ~xc ~xs ~static_max_kib ~target_kib ~shadow_
 
 	let local_stuff = [
 		"serial/0/limit",    string_of_int 65536;
-(*
 		"console/port",      string_of_int console_port;
 		"console/ring-ref",  sprintf "%nu" console_mfn;
-*)
 	] in
 (*
 	let store_mfn =
@@ -727,6 +742,11 @@ let restore_libxc_record (task: Xenops_task.t) ~hvm ~store_port ~console_port ~e
 		raise Domain_restore_failed
 
 let consume_qemu_record fd limit domid uuid =
+	if limit > 1_048_576L then begin (* 1MB *)
+		error "VM = %s; domid = %d; QEMU record length in header too large (%Ld bytes)"
+			(Uuid.to_string uuid) domid limit;
+		raise Suspend_image_failure
+	end;
 	let file = sprintf qemu_restore_path domid in
 	let fd2 = Unix.openfile file
 		[ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC; ] 0o640
@@ -734,7 +754,15 @@ let consume_qemu_record fd limit domid uuid =
 	finally (fun () ->
 		debug "VM = %s; domid = %d; reading %Ld bytes from %s"
 			(Uuid.to_string uuid) domid limit file;
-		if Unixext.copy_file ~limit fd fd2 <> limit
+		let bytes =
+			try
+				Unixext.copy_file ~limit fd fd2
+			with Unix.Unix_error (e, s1, s2) ->
+				error "VM = %s; domid = %d; %s, %s, %s" (Uuid.to_string uuid) domid (Unix.error_message e) s1 s2;
+				Unixext.unlink_safe file;
+				raise Suspend_image_failure
+		in
+		if bytes <> limit
 		then begin
 			error "VM = %s; domid = %d; qemu save file was truncated"
 				(Uuid.to_string uuid) domid;
@@ -752,7 +780,7 @@ let restore_common (task: Xenops_task.t) ~xc ~xs ~hvm ~store_port ~console_port 
 		debug "Detected legacy suspend image! Piping through conversion tool.";
 		let (store_mfn, console_mfn) =
 			begin match
-				with_conversion_script task "xenguest" hvm fd (fun pipe_r ->
+				with_conversion_script task "XenguestHelper" hvm fd (fun pipe_r ->
 					restore_libxc_record task ~hvm ~store_port ~console_port
 						~extras xenguest_path domid uuid pipe_r
 				)
@@ -786,8 +814,8 @@ let restore_common (task: Xenops_task.t) ~xc ~xs ~hvm ~store_port ~console_port 
 			read_header fd >>= function
 			| Xenops, len ->
 				debug "Read Xenops record header (length=%Ld)" len;
-				let contents = Io.read fd (Io.int_of_int64_exn len) in
-				debug "Read Xenops record contents:\n%s" contents;
+				let _ = Io.read fd (Io.int_of_int64_exn len) in
+				debug "Read Xenops record contents";
 				process_header res
 			| Libxc, _ ->
 				debug "Read Libxc record header";
@@ -877,6 +905,7 @@ let hvm_restore (task: Xenops_task.t) ~xc ~xs ~static_max_kib ~target_kib ~shado
 	let required_host_free_mib =
 		Memory.HVM.footprint_mib target_mib static_max_mib vcpus shadow_multiplier in
 
+	maybe_ca_140252_workaround ~xc ~vcpus domid;
 	let store_port, console_port = build_pre ~xc ~xs
 		~xen_max_mib ~shadow_mib ~required_host_free_mib ~vcpus domid in
 
@@ -885,10 +914,8 @@ let hvm_restore (task: Xenops_task.t) ~xc ~xs ~static_max_kib ~target_kib ~shado
 	                                            ~vcpus ~extras:[] xenguest_path domid fd in
 	let local_stuff = [
 		"serial/0/limit",    string_of_int 65536;
-(*
 		"console/port",     string_of_int console_port;
 		"console/ring-ref", sprintf "%nu" console_mfn;
-*)
 	] in
 	let vm_stuff = [
 		"rtc/timeoffset",    timeoffset;
@@ -1023,7 +1050,12 @@ let suspend (task: Xenops_task.t) ~xc ~xs ~hvm xenguest_path domid fd flags ?(pr
 	debug "Writing save signature: %s" save_signature;
 	Io.write fd save_signature;
 	(* Xenops record *)
-	let xenops_record = Suspend_image.Xenops_record.(to_string (make ())) in
+	let xs_subtree =
+		Xs.transaction xs (fun t ->
+			xenstore_read_dir t (xs.Xs.getdomainpath domid)
+		)
+	in
+	let xenops_record = Xenops_record.(to_string (make ~xs_subtree ())) in
 	let xenops_rec_len = String.length xenops_record in
 	let res =
 		debug "Writing Xenops header (length=%d)" xenops_rec_len;

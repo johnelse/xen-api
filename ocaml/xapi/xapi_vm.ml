@@ -88,7 +88,8 @@ let set_ha_restart_priority ~__context ~self ~value =
 	if true
 		&& current <> Constants.ha_restart
 		&& value = Constants.ha_restart then begin
-			Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context self;
+			if Db.VM.get_power_state ~__context ~self != `Halted then
+				Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context self;
 			let pool = Helpers.get_pool ~__context in
 			if Db.Pool.get_ha_enabled ~__context ~self:pool then
 				let (_: bool) = Xapi_ha_vm_failover.update_pool_status ~__context () in ()
@@ -196,6 +197,13 @@ let start ~__context ~vm ~start_paused ~force =
 
 	if vmr.API.vM_ha_restart_priority = Constants.ha_restart
 	then Db.VM.set_ha_always_run ~__context ~self:vm ~value:true;
+
+	(* Clear out any VM guest metrics record. Guest metrics will be updated by
+	 * the running VM and for now they might be wrong, especially network
+	 * addresses inherited by a cloned VM. *)
+	let vm_gm = Db.VM.get_guest_metrics ~__context ~self:vm in
+	Db.VM.set_guest_metrics ~__context ~self:vm ~value:Ref.null;
+	(try Db.VM_guest_metrics.destroy ~__context ~self:vm_gm with _ -> ());
 
 	(* If the VM has any vGPUs, gpumon must remain stopped until the
 	 * VM has started. *)
@@ -795,6 +803,9 @@ let set_order ~__context ~self ~value =
 
 let assert_can_be_recovered ~__context ~self ~session_to =
 	Xapi_vm_helpers.assert_can_be_recovered ~__context ~self ~session_to
+
+let get_SRs_required_for_recovery ~__context ~self ~session_to =
+	Xapi_vm_helpers.get_SRs_required_for_recovery ~__context ~self ~session_to
 
 let recover ~__context ~self ~session_to ~force =
 	Xapi_dr.assert_session_allows_dr ~session_id:session_to ~action:"VM.recover";

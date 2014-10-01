@@ -453,7 +453,19 @@ let destroy ~__context ~self =
   let symlinkfname = (ref_symlink ()) ^ "/" ^ (Ref.string_of self) in
   let fullpath =
 	try Unix.readlink symlinkfname
-	with _ -> raise (Api_errors.Server_error (Api_errors.handle_invalid, [Datamodel._message; Ref.string_of self]))
+	with _ -> begin
+		let allfiles = List.map (fun file -> message_dir ^ "/" ^ file) (Array.to_list (Sys.readdir message_dir)) in
+		let allmsgs = List.filter (fun file -> not (Sys.is_directory file)) allfiles in
+		try
+			List.find (fun msg_fname ->
+				try
+					let ic = open_in msg_fname in
+					let (_,_ref,_) = Pervasiveext.finally (fun () -> of_xml (Xmlm.make_input (`Channel ic))) (fun () -> close_in ic) in
+					if _ref = self then true else false
+				with _ -> false
+			) allmsgs
+		with _ -> raise (Api_errors.Server_error (Api_errors.handle_invalid, [Datamodel._message; Ref.string_of self]))
+	end
   in
   let basefilename = List.hd (List.rev (String.split '/' fullpath)) in
   destroy_real __context basefilename
@@ -473,6 +485,7 @@ let gc ~__context =
 	  in
 	  if List.length allmsg > Xapi_globs.message_limit then
 	begin
+	  warn "Messages have reached over the limit %d" Xapi_globs.message_limit;
 	  let sorted = List.sort (fun (t1,_) (t2,_) -> compare t1 t2) allmsg in
 	  let n = List.length sorted in
 	  let to_reap = n - Xapi_globs.message_limit in
@@ -539,7 +552,7 @@ let get_since_for_events ~__context since =
 			 | (last_in_memory, _, _) :: _ when last_in_memory < since ->
 				   Some (List.filter_map
 							 (fun (gen,_ref,msg) ->
-								  if gen > since then Some (gen, Xapi_event.MCreate (_ref, msg)) else None)
+								  if gen > since then Some (gen, Xapi_event.Message.Create (_ref, msg)) else None)
 							 !in_memory_cache)
 			 | (last_in_memory, _, _) :: _ ->
 				 debug "get_since_for_events: last_in_memory (%Ld) > since (%Ld): Using slow message lookup" last_in_memory since;
@@ -551,11 +564,11 @@ let get_since_for_events ~__context since =
 	let result = match cached_result with
 		| Some x -> x
 		| None ->
-			List.map (fun (ts,x,y) -> (ts, Xapi_event.MCreate (x,y))) (get_from_generation since)
+			List.map (fun (ts,x,y) -> (ts, Xapi_event.Message.Create (x,y))) (get_from_generation since)
 	in
 	let delete_results = Mutex.execute deleted_mutex (fun () ->
 		let deleted = List.filter (fun (deltime,_ref) -> deltime > since) !deleted in
-		List.map (fun (ts , _ref) -> (ts,Xapi_event.MDel _ref)) deleted) in
+		List.map (fun (ts , _ref) -> (ts,Xapi_event.Message.Del _ref)) deleted) in
 	let all_results = result @ delete_results in
 	let newsince = List.fold_left (fun acc (ts,m) -> max ts acc) since all_results in
 	(newsince, List.map snd all_results)
@@ -567,7 +580,7 @@ let get_by_uuid ~__context ~uuid =
 	let (_,_ref,_) = Pervasiveext.finally (fun () -> of_xml (Xmlm.make_input (`Channel ic))) (fun () -> close_in ic) in
 	_ref
   with
-	  _ -> raise (Api_errors.Server_error (Api_errors.uuid_invalid, [ uuid ]))
+	  _ -> raise (Api_errors.Server_error (Api_errors.uuid_invalid, [ "message"; uuid ]))
 
 let get_all ~__context =
   try
@@ -605,7 +618,7 @@ let repopulate_cache () =
 
 let register_event_hook () =
 	repopulate_cache ();
-	Xapi_event.message_get_since_for_events := get_since_for_events
+	Xapi_event.Message.get_since_for_events := get_since_for_events
 
 (* Query params: cls=VM etc, obj_uuid=<..>, min_priority. Returns the last
    days worth of messages as an RSS feed. *)
