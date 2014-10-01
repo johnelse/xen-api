@@ -1144,6 +1144,24 @@ let update_snapshot_and_parent_links ~__context state =
 				let parent = lookup parent state.table in
 				Db.VM.set_parent ~__context ~self:ref ~value:parent
 			with _ -> debug "no parent found"
+		end
+
+		else if cls = Datamodel._vdi then begin
+			let ref = Ref.of_string ref in
+
+			if Db.VDI.get_is_a_snapshot ~__context ~self:ref then begin
+				let snapshot_of = Db.VDI.get_snapshot_of ~__context ~self:ref in
+				if snapshot_of <> Ref.null
+				then begin
+					debug "lookup for VDI.snapshot_of = '%s'" (Ref.string_of snapshot_of);
+					log_reraise
+						("Failed to find the VDI which is snapshot of " ^ (Db.VDI.get_uuid ~__context ~self:ref))
+						(fun table ->
+							let snapshot_of = (lookup snapshot_of) table in
+							Db.VDI.set_snapshot_of ~__context ~self:ref ~value:snapshot_of)
+						state.table
+				end
+			end
 		end in
 
 	List.iter aux state.table
