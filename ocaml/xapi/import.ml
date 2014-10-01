@@ -1121,23 +1121,23 @@ let handlers =
 
 let update_snapshot_and_parent_links ~__context state =
 	let aux (cls, id, ref) =
-		let ref = Ref.of_string ref in
-
-		if cls = Datamodel._vm && Db.VM.get_is_a_snapshot ~__context ~self:ref then begin
-			let snapshot_of = Db.VM.get_snapshot_of ~__context ~self:ref in
-			if snapshot_of <> Ref.null
-			then begin
-				debug "lookup for VM.snapshot_of = '%s'" (Ref.string_of snapshot_of);
-				log_reraise
-					("Failed to find the VM which is snapshot of " ^ (Db.VM.get_name_label ~__context ~self:ref))
-					(fun table ->
-						let snapshot_of = (lookup snapshot_of) table in
-						Db.VM.set_snapshot_of ~__context ~self:ref ~value:snapshot_of)
-					state.table
-			end
-		end;
-
 		if cls = Datamodel._vm then begin
+			let ref = Ref.of_string ref in
+
+			if Db.VM.get_is_a_snapshot ~__context ~self:ref then begin
+				let snapshot_of = Db.VM.get_snapshot_of ~__context ~self:ref in
+				if snapshot_of <> Ref.null
+				then begin
+					debug "lookup for VM.snapshot_of = '%s'" (Ref.string_of snapshot_of);
+					log_reraise
+						("Failed to find the VM which is snapshot of " ^ (Db.VM.get_name_label ~__context ~self:ref))
+						(fun table ->
+							let snapshot_of = (lookup snapshot_of) table in
+							Db.VM.set_snapshot_of ~__context ~self:ref ~value:snapshot_of)
+						state.table
+				end
+			end;
+
 			let parent = Db.VM.get_parent ~__context ~self:ref in
 			debug "lookup for parent = '%s'" (Ref.string_of parent);
 			try
