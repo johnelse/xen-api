@@ -256,11 +256,15 @@ let make_vbd table ~preserve_power_state __context self =
     snapshot = API.To.vBD_t vbd }  
 
 (** Convert a VDI reference to an obj *)
-let make_vdi table __context self = 
+let make_vdi ?(with_snapshot_metadata=false) table __context self = 
   let vdi = Db.VDI.get_record ~__context ~self in
   let vdi = { vdi with 
 		API.vDI_VBDs = filter table (List.map Ref.string_of vdi.API.vDI_VBDs);
 		API.vDI_crash_dumps = [];
+		API.vDI_snapshot_of =
+			if with_snapshot_metadata
+			then lookup table (Ref.string_of vdi.API.vDI_snapshot_of)
+			else Ref.null;
 		API.vDI_SR = lookup table (Ref.string_of vdi.API.vDI_SR);
 		API.vDI_current_operations = [];
 		API.vDI_allowed_operations = [];
@@ -328,7 +332,7 @@ let make_all ~with_snapshot_metadata ~preserve_power_state table __context =
 	let vbds = List.map (make_vbd ~preserve_power_state table __context) (filter table (Db.VBD.get_all ~__context)) in
 	let vifs = List.map (make_vif ~preserve_power_state table __context) (filter table (Db.VIF.get_all ~__context)) in
 	let nets = List.map (make_network table __context) (filter table (Db.Network.get_all ~__context)) in
-	let vdis = List.map (make_vdi table __context) (filter table (Db.VDI.get_all ~__context)) in
+	let vdis = List.map (make_vdi ~with_snapshot_metadata table __context) (filter table (Db.VDI.get_all ~__context)) in
 	let srs  = List.map (make_sr table __context) (filter table (Db.SR.get_all ~__context)) in
 	let vgpu_types = List.map (make_vgpu_type table __context) (filter table (Db.VGPU_type.get_all ~__context)) in
 	let vgpus = List.map (make_vgpu ~preserve_power_state table __context) (filter table (Db.VGPU.get_all ~__context)) in
