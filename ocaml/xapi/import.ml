@@ -1127,7 +1127,7 @@ let update_snapshot_and_parent_links ~__context state =
 			let snapshot_of = Db.VM.get_snapshot_of ~__context ~self:ref in
 			if snapshot_of <> Ref.null
 			then begin
-				debug "lookup for snapshot_of = '%s'" (Ref.string_of snapshot_of);
+				debug "lookup for VM.snapshot_of = '%s'" (Ref.string_of snapshot_of);
 				log_reraise
 					("Failed to find the VM which is snapshot of " ^ (Db.VM.get_name_label ~__context ~self:ref))
 					(fun table ->
