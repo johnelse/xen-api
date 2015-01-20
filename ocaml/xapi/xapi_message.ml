@@ -511,15 +511,15 @@ let gc ~__context =
 let get_real_inner dir filter name_filter =
 	try
 		let allmsgs = Array.to_list (Sys.readdir dir) in
-		ignore allmsgs;
-		let messages = [] in (*List.filter name_filter allmsgs in*)
-		let messages = List.filter_map (fun msg_fname ->
+		let messages = List.filter name_filter allmsgs in
+		ignore messages;
+		let messages = [] (*List.filter_map (fun msg_fname ->
 			let filename = dir ^ "/" ^ msg_fname in
 			try
 				let ic = open_in filename in
 				let (gen,_ref,msg) = Pervasiveext.finally (fun () -> of_xml (Xmlm.make_input (`Channel ic))) (fun () -> close_in ic) in
 				if filter msg then Some (gen,_ref,msg) else None
-			with _ -> None) messages
+			with _ -> None) messages *)
 		in
 		List.sort (fun (t1,r1,m1) (t2,r2,m2) ->
 			let r = compare t2 t1 in
