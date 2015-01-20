@@ -517,10 +517,8 @@ let get_real_inner dir filter name_filter =
 			let filename = dir ^ "/" ^ msg_fname in
 			try
 				let ic = open_in filename in
-				let () = Pervasiveext.finally (fun () -> ()) (fun () -> close_in ic) in
-				(*let (gen,_ref,msg) = Pervasiveext.finally (fun () -> of_xml (Xmlm.make_input (`Channel ic))) (fun () -> close_in ic) in*)
-				None
-				(*if filter msg then Some (gen,_ref,msg) else None*)
+				let (gen,_ref,msg) = Pervasiveext.finally (fun () -> of_xml (Xmlm.make_input (`Channel ic))) (fun () -> close_in ic) in
+				if filter msg then Some (gen,_ref,msg) else None
 			with _ -> None) messages
 		in
 		List.sort (fun (t1,r1,m1) (t2,r2,m2) ->
