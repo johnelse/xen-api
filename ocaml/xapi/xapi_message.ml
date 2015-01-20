@@ -510,8 +510,9 @@ let gc ~__context =
 
 let get_real_inner dir filter name_filter =
 	try
-		let allmsgs = [] in (*Array.to_list (Sys.readdir dir) in*)
-		let messages = List.filter name_filter allmsgs in
+		let allmsgs = Array.to_list (Sys.readdir dir) in
+		ignore allmsgs;
+		let messages = [] in (*List.filter name_filter allmsgs in*)
 		let messages = List.filter_map (fun msg_fname ->
 			let filename = dir ^ "/" ^ msg_fname in
 			try
