@@ -82,6 +82,7 @@ module Vm = struct
 	type video_card =
 		| Cirrus
 		| Standard_VGA
+		| GVT_g
 		| Vgpu
 
 	type hvm_info = {

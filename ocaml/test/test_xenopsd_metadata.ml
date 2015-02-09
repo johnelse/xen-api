@@ -127,6 +127,7 @@ module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 			| Vm.Cirrus -> "Cirrus"
 			| Vm.Standard_VGA -> "Standard_VGA"
 			| Vm.Vgpu -> "Vgpu"
+			| Vm.GVT_g -> "GVT_g"
 	end
 
 	module State = XapiDb
