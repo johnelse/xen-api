@@ -1760,7 +1760,7 @@ let get_state ~xs ~qemu_domid domid =
 let cmdline_of_disp info =
 	let vga_type_opts x = 
 	  match x with
-	    | Xengt -> ["-xengt"; "-vgt_low_gm_sz"; "128"; "-vgt_high_gm_sz"; "384"; "-vgt_fence_sz"; "4"]
+	    | Xengt -> ["-xengt"; "-vgt_low_gm_sz"; "128"; "-vgt_high_gm_sz"; "384"; "-vgt_fence_sz"; "4"; "-priv"]
 	    | Vgpu -> ["-vgpu"]
 	    | Std_vga -> ["-std-vga"]
 	    | Cirrus -> []
