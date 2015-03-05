@@ -235,11 +235,12 @@ let builder_of_vm ~__context ~vm timeoffset pci_passthrough =
 			&& (List.mem_assoc Platform.vgpu_pci_id vm.API.vM_platform)
 			&& (List.mem_assoc Platform.vgpu_config vm.API.vM_platform)
 		then Vgpu
+		else if (string vm.API.vM_platform "false" "gvt-g") = "true"
+		then GVT_g
 		else
 			match string vm.API.vM_platform "cirrus" Platform.vga with
 			| "std" -> Standard_VGA
 			| "cirrus" -> Cirrus
-			| "gvt-g" -> GVT_g
 			| x ->
 				error "Unknown platform/vga option: %s (expected 'std' or 'cirrus')" x;
 				Cirrus
