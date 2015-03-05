@@ -386,12 +386,15 @@ let populate_pgpu_vgpu_types = {
 	fn = fun ~__context ->
 		let pci_db = Pci_db.open_default () in
 		let pgpus = Db.PGPU.get_all ~__context in
+		let system_display_device = Xapi_pci.get_system_display_device () in
 		List.iter
 			(fun pgpu ->
 				let pci = Db.PGPU.get_PCI ~__context ~self:pgpu in
+				let pci_id = Db.PCI.get_pci_id ~__context ~self:pci in
+				let is_system_display_device = system_display_device = (Some pci_id) in
 				let supported_vgpu_types =
 					Xapi_vgpu_type.find_or_create_supported_types ~__context
-					~pci_db pci
+						~is_system_display_device ~pci_db pci
 				in
 				Db.PGPU.set_supported_VGPU_types ~__context
 					~self:pgpu ~value:supported_vgpu_types;

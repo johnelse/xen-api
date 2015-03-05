@@ -234,22 +234,27 @@ let relevant_vgpu_types pci_db pci_dev_id subsystem_device_id =
 	in
 	build_vgpu_types pci_db [] relevant_vgpu_confs
 
-let find_or_create_supported_types ~__context ~pci_db pci =
-	let dev_id = Xapi_pci.int_of_id (Db.PCI.get_device_id ~__context ~self:pci) in
-	let subsystem_dev_id =
-		match Db.PCI.get_subsystem_device_id ~__context ~self:pci with
-		| "" -> None
-		| id_string -> Some (Xapi_pci.int_of_id id_string)
-	in
-	debug "dev_id = %s" (Printf.sprintf "%04Lx" dev_id);
-	let relevant_types = relevant_vgpu_types pci_db dev_id subsystem_dev_id in
-	debug "Relevant vGPU configurations for pgpu = [ %s ]"
-		(String.concat "; "
-			(List.map (fun vt -> vt.model_name) relevant_types));
-	let vgpu_types = List.map
-		(fun v -> find_or_create ~__context v) relevant_types in
-	let entire_gpu_type = find_or_create ~__context entire_gpu in
-	entire_gpu_type :: vgpu_types
+let find_or_create_supported_types ~__context
+		~pci_db ~is_system_display_device pci =
+	if is_system_display_device
+	then []
+	else begin
+		let dev_id = Xapi_pci.int_of_id (Db.PCI.get_device_id ~__context ~self:pci) in
+		let subsystem_dev_id =
+			match Db.PCI.get_subsystem_device_id ~__context ~self:pci with
+			| "" -> None
+			| id_string -> Some (Xapi_pci.int_of_id id_string)
+		in
+		debug "dev_id = %s" (Printf.sprintf "%04Lx" dev_id);
+		let relevant_types = relevant_vgpu_types pci_db dev_id subsystem_dev_id in
+		debug "Relevant vGPU configurations for pgpu = [ %s ]"
+			(String.concat "; "
+				(List.map (fun vt -> vt.model_name) relevant_types));
+		let vgpu_types = List.map
+			(fun v -> find_or_create ~__context v) relevant_types in
+		let entire_gpu_type = find_or_create ~__context entire_gpu in
+		entire_gpu_type :: vgpu_types
+	end
 
 let requires_passthrough ~__context ~self =
 	let type_rec = Db.VGPU_type.get_record ~__context ~self in

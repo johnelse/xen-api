@@ -58,9 +58,9 @@ let update_gpus ~__context ~host =
 		| pci :: remaining_pcis ->
 			let pci_id = Db.PCI.get_pci_id ~__context ~self:pci in
 			let supported_VGPU_types =
-				if system_display_device = (Some pci_id)
-				then []
-				else Xapi_vgpu_type.find_or_create_supported_types ~__context ~pci_db pci
+				let is_system_display_device = system_display_device = (Some pci_id) in
+				Xapi_vgpu_type.find_or_create_supported_types ~__context
+					~is_system_display_device ~pci_db pci
 			in
 			let pgpu =
 				try
