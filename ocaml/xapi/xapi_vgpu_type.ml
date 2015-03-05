@@ -57,6 +57,19 @@ let entire_gpu = {
 	internal_config = [];
 }
 
+let intel_vendor_id = 0x8086L
+
+let intel_gvt_g = {
+	vendor_name = "Intel";
+	model_name = "Intel GVT-g";
+	framebuffer_size = List.fold_left Int64.mul 1L [256L; 1024L; 1024L];
+	max_heads = 1L;
+	max_resolution_x = 2560L;
+	max_resolution_y = 1600L;
+	size = Int64.div Constants.pgpu_default_size 3L;
+	internal_config = [];
+}
+
 let create ~__context ~vendor_name ~model_name ~framebuffer_size ~max_heads
 		~max_resolution_x ~max_resolution_y ~size ~internal_config =
 	let ref = Ref.make () in
@@ -236,10 +249,14 @@ let relevant_vgpu_types pci_db pci_dev_id subsystem_device_id =
 
 let find_or_create_supported_types ~__context
 		~pci_db ~is_system_display_device pci =
+	let dev_id = Xapi_pci.int_of_id (Db.PCI.get_device_id ~__context ~self:pci) in
 	if is_system_display_device
-	then []
-	else begin
-		let dev_id = Xapi_pci.int_of_id (Db.PCI.get_device_id ~__context ~self:pci) in
+	then begin
+		let vendor_id = Xapi_pci.int_of_id (Db.PCI.get_vendor_id ~__context ~self:pci) in
+		if vendor_id = intel_vendor_id
+		then [find_or_create ~__context intel_gvt_g]
+		else []
+	end else begin
 		let subsystem_dev_id =
 			match Db.PCI.get_subsystem_device_id ~__context ~self:pci with
 			| "" -> None
