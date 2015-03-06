@@ -149,8 +149,10 @@ let add_vgpus_to_vm ~__context vm vgpus =
 		let vgpu_type = Db.VGPU_type.get_record_internal ~__context ~self:vgpu.type_ref in
 		let vendor_name = vgpu_type.Db_actions.vGPU_type_vendor_name in
 		if vendor_name = "Intel"
-		then Db.VM.add_to_platform ~__context ~self:vm ~key:"gvt-g" ~value:"true"
-		else begin
+		then begin
+			let (_: API.ref_PCI) = create_virtual_vgpu ~__context vm vgpu in
+			Db.VM.add_to_platform ~__context ~self:vm ~key:"gvt-g" ~value:"true"
+		end else begin
 			let internal_config = vgpu_type.Db_actions.vGPU_type_internal_config in
 			let config_path = List.assoc Xapi_globs.vgpu_config_key internal_config in
 			let vgpu_pci = create_virtual_vgpu ~__context vm vgpu in
