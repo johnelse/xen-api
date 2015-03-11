@@ -266,7 +266,21 @@ let safe_destroy_vdi ~__context ~rpc ~session_id vdi =
 		if not (Db.SR.get_content_type ~__context ~self:sr = "iso") then
 			Client.VDI.destroy rpc session_id vdi
 	end
-	
+
+let ref_list_to_string refs =
+	let open Fun in
+	refs
+		|> List.map Ref.string_of
+		|> String.concat "; "
+		|> Printf.sprintf "[%s]"
+
+let ref_map_to_string ref_map =
+	let open Fun in
+	ref_map
+		|> List.map (fun (k,v) -> (Ref.string_of k) ^ ", " ^ (Ref.string_of v))
+		|> String.concat "; "
+		|> Printf.sprintf "[%s]"
+
 (* Copy the VBDs and VIFs from a source VM to a dest VM and then delete the old disks. *)
 (* This operation destroys the data of the dest VM.                                    *)
 let update_vifs_vbds_and_vgpus ~__context ~snapshot ~vm =
@@ -276,24 +290,36 @@ let update_vifs_vbds_and_vgpus ~__context ~snapshot ~vm =
 			(fun vbd -> Db.VBD.get_type ~__context ~self:vbd <> `CD)
 			snap_vbds
 	in
+	debug "CA-163811: snap_vbds_disk = %s" (ref_list_to_string snap_vbds_disk);
 	let snap_vdis = List.map (fun vbd -> Db.VBD.get_VDI ~__context ~self:vbd) snap_vbds_disk in
+	debug "CA-163811: snap_vdis = %s" (ref_list_to_string snap_vdis);
 	let vdis_snap_of = List.map (fun vdi -> Db.VDI.get_snapshot_of ~__context ~self:vdi) snap_vdis in
+	debug "CA-163811: vdis_snap_of = %s" (ref_list_to_string vdis_snap_of);
 	let snap_vifs = Db.VM.get_VIFs ~__context ~self:snapshot in
 	let snap_vgpus = Db.VM.get_VGPUs ~__context ~self:snapshot in
 	let snap_suspend_VDI = Db.VM.get_suspend_VDI ~__context ~self:snapshot in
 
 	let vm_VBDs = Db.VM.get_VBDs ~__context ~self:vm in
+	debug "CA-163811: vm_VBDs = %s" (ref_list_to_string vm_VBDs);
 	(* Filter VBDs to ensure that we don't read empty CDROMs *)
 	let vbds_without_cd = List.filter (fun vbd -> Db.VBD.get_type ~__context ~self:vbd <> `CD) vm_VBDs in
+	debug "CA-163811: vbds_without_cd = %s" (ref_list_to_string vbds_without_cd);
 	let vm_VDIs = List.map (fun vbd -> Db.VBD.get_VDI ~__context ~self:vbd) vbds_without_cd in
+	debug "CA-163811: vm_VDIs = %s" (ref_list_to_string vm_VDIs);
 	let vm_VDIs = List.filter (fun vdi -> List.mem vdi vdis_snap_of) vm_VDIs in
+	debug "CA-163811: vm_VDIs (with_snapshots) = %s" (ref_list_to_string vm_VDIs);
 	let vm_VIFs = Db.VM.get_VIFs ~__context ~self:vm in
 	let vm_VGPUs = Db.VM.get_VGPUs ~__context ~self:vm in
 	let vm_suspend_VDI = Db.VM.get_suspend_VDI ~__context ~self:vm in
+	debug "CA-163811: vm_suspend_VDI = %s" (Ref.string_of vm_suspend_VDI);
 
 	let oldvdi_to_snapshots_map = List.map (fun vdi -> let snaps = Db.VDI.get_snapshots ~__context ~self:vdi in
 		(vdi, snaps)
 	) vm_VDIs in
+	List.iter
+		(fun (oldvdi, snapshots) ->
+			debug "CA-163811: vm_VDI %s has snapshots %s" (Ref.string_of oldvdi) (ref_list_to_string snapshots))
+		oldvdi_to_snapshots_map;
 
 	(* clone all the disks of the snapshot *)
 	Helpers.call_api_functions ~__context (fun rpc session_id ->
@@ -311,9 +337,15 @@ let update_vifs_vbds_and_vgpus ~__context ~snapshot ~vm =
 
 		debug "Updating the snapshot_of fields for relevant VDIs";
 		let oldvdi_to_newvdi_map = List.map2 (fun oldvdi (_, newvdi, _) -> (oldvdi,newvdi)) vdis_snap_of cloned_disks in
+		debug "CA-163811: oldvdi_to_newvdi_map = %s" (ref_map_to_string oldvdi_to_newvdi_map);
 		List.iter (fun (oldvdi, snaps) ->
 			let newvdi = List.assoc oldvdi oldvdi_to_newvdi_map in
-			List.iter (fun s -> Db.VDI.set_snapshot_of ~__context ~self:s ~value:newvdi) snaps
+			List.iter
+				(fun s ->
+					debug "CA-163811: %s's snapshot_of was %s" (Ref.string_of s) (Ref.string_of (Db.VDI.get_snapshot_of ~__context ~self:s));
+					debug "CA-163811: will set %s's snapshot_of to %s" (Ref.string_of s) (Ref.string_of newvdi);
+					Db.VDI.set_snapshot_of ~__context ~self:s ~value:newvdi)
+				snaps
 		) oldvdi_to_snapshots_map;
 
 		debug "Cloning the suspend VDI if needed";
