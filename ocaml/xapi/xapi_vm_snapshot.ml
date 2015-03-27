@@ -281,9 +281,23 @@ let ref_map_to_string ref_map =
 		|> String.concat "; "
 		|> Printf.sprintf "[%s]"
 
+let dump_db_mutex = Mutex.create ()
+let dump_db ~__context ~filename =
+	let open Threadext in
+	Mutex.execute dump_db_mutex
+		(fun () ->
+			try
+				Unixext.unlink_safe filename;
+				let db = Db_ref.get_database (Context.database_of __context) in
+				debug "CA-163811: Dumping database to %s" filename;
+				Db_xml.To.file filename db
+			with Db_ref.Database_not_in_memory ->
+				debug "CA-163811: database dump failed, not a master")
+
 (* Copy the VBDs and VIFs from a source VM to a dest VM and then delete the old disks. *)
 (* This operation destroys the data of the dest VM.                                    *)
 let update_vifs_vbds_and_vgpus ~__context ~snapshot ~vm =
+	dump_db ~__context ~filename:"/root/snapshot_revert.db";
 	let snap_vbds = Db.VM.get_VBDs ~__context ~self:snapshot in
 	let snap_vbds_disk, snap_vbds_cd =
 		List.partition
