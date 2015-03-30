@@ -1173,3 +1173,16 @@ let timebox ~timeout ~otherwise f =
 	let _ = Thread.wait_timed_read fd_in timeout in
 	Unix.close fd_in;
 	!result ()
+
+let dump_db_mutex = Mutex.create ()
+let dump_db ~__context ~filename =
+	let open Threadext in
+	Mutex.execute dump_db_mutex
+		(fun () ->
+			try
+				Unixext.unlink_safe filename;
+				let db = Db_ref.get_database (Context.database_of __context) in
+				debug "CA-163811: Dumping database to %s" filename;
+				Db_xml.To.file filename db
+			with Db_ref.Database_not_in_memory ->
+				debug "CA-163811: database dump failed, not a master")
