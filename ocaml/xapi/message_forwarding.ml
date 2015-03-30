@@ -3212,6 +3212,8 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 			Local.VDI.set_is_a_snapshot ~__context ~self ~value
 
 		let set_snapshot_of ~__context ~self ~value =
+			info "CA-163811: VDI.set_snapshot_of: VDI = '%s' value = '%s'"
+				(vdi_uuid ~__context self) (vdi_uuid ~__context value);
 			let sr = Db.VDI.get_SR ~__context ~self in
 			Sm.assert_session_has_internal_sr_access ~__context ~sr;
 			Local.VDI.set_snapshot_of ~__context ~self ~value
