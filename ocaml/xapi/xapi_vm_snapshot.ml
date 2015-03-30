@@ -167,6 +167,7 @@ let snapshot_with_quiesce ~__context ~vm ~new_name =
 (* Checkpoint                                                                                    *)
 (*************************************************************************************************)
 let checkpoint ~__context ~vm ~new_name =
+	Helpers.dump_db ~__context ~filename:"/root/vm_checkpoint_start.db";
 	let power_state = Db.VM.get_power_state ~__context ~self:vm in
 	let snapshot_info = ref [] in
 		(* live-suspend the VM if the VM is running *)
@@ -220,6 +221,7 @@ let checkpoint ~__context ~vm ~new_name =
 			debug "Performing a slow resume";
 			Xapi_xenops.resume ~__context ~self:vm ~start_paused:false ~force:false;
 		end;
+		Helpers.dump_db ~__context ~filename:"/root/vm_checkpoint_end.db";
 		match snap with
 		| None -> TaskHelper.raise_cancelled ~__context
 		| Some snap -> snap

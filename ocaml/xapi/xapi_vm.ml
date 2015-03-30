@@ -461,6 +461,7 @@ let destroy  ~__context ~self =
    event monitoring thread on live VMs. Since clone does not deal with live VMs we ommit lock_vm. *)
 
 let clone ~__context ~vm ~new_name =
+	Helpers.dump_db ~__context ~filename:"/root/vm_clone_start.db";
 	TaskHelper.set_cancellable ~__context;
 	(* !!! Note - please do not be tempted to put this on the "long_running_queue", even though it may be long
 	   running.. XenRT relies on fast clones being parallelizable wrt other long-running ops such as
@@ -471,13 +472,17 @@ let clone ~__context ~vm ~new_name =
 	let new_vm = Xapi_vm_clone.clone Xapi_vm_clone.Disk_op_clone ~__context ~vm ~new_name in
 	if Db.VM.get_is_a_snapshot ~__context ~self:vm && Db.VM.get_power_state ~__context ~self:new_vm <> `Halted then
 		hard_shutdown ~__context ~vm:new_vm;
+	Helpers.dump_db ~__context ~filename:"/root/vm_clone_end.db";
 	new_vm
 
 (* We do call wait_in_line for snapshot and snapshot_with_quiesce because the locks are taken at *)
 (* the VBD level (with pause/unpause mechanism                                                   *)
 let snapshot ~__context ~vm ~new_name =
+	Helpers.dump_db ~__context ~filename:"/root/vm_snapshot_start.db";
 	TaskHelper.set_cancellable ~__context;
-	Xapi_vm_snapshot.snapshot ~__context ~vm ~new_name
+	let result = Xapi_vm_snapshot.snapshot ~__context ~vm ~new_name in
+	Helpers.dump_db ~__context ~filename:"/root/vm_snapshot_end.db";
+	result
 
 (* Snapshot_with_quiesce triggers the VSS plugin which will then calls the VM.snapshot API call.     *)
 (* Thus, to avoid dead-locks, do not put snapshot and snapshot_with_quiesce on the same waiting line *)
@@ -512,6 +517,7 @@ let checkpoint ~__context ~vm ~new_name =
 	end
 
 let copy ~__context ~vm ~new_name ~sr =
+	Helpers.dump_db ~__context ~filename:"/root/vm_copy_start.db";
 	(* See if the supplied SR is suitable: it must exist and be a non-ISO SR *)
 	(* First the existence check. It's not an error to not exist at all. *)
 	let sr = try ignore(Db.SR.get_uuid ~__context ~self:sr); Some sr with _ -> None in
@@ -522,6 +528,7 @@ let copy ~__context ~vm ~new_name ~sr =
 		then raise (Api_errors.Server_error(Api_errors.operation_not_allowed,
 			[ "Cannot copy a VM's disks to an ISO SR" ]))) sr;
 	let new_vm = Xapi_vm_clone.clone (Xapi_vm_clone.Disk_op_copy sr) ~__context ~vm ~new_name in
+	Helpers.dump_db ~__context ~filename:"/root/vm_copy_end.db";
 	if Db.VM.get_is_a_snapshot ~__context ~self:vm && Db.VM.get_power_state ~__context ~self:new_vm <> `Halted then
 		Helpers.call_api_functions ~__context
 			(fun rpc session_id -> Client.VM.hard_shutdown ~rpc ~session_id ~vm:new_vm);
