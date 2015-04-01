@@ -463,6 +463,7 @@ let snapshot ~__context ~vdi ~driver_params =
 		) in
 	(* Record the fact this is a snapshot *)
 	Db.VDI.set_is_a_snapshot ~__context ~self:newvdi ~value:true;
+	debug "CA-163811: Xapi_vdi.snapshot: set_snapshot_of %s to %s" (Ref.string_of newvdi) (Ref.string_of vdi);
 	Db.VDI.set_snapshot_of ~__context ~self:newvdi ~value:vdi;
 
 	update_allowed_operations ~__context ~self:newvdi;
@@ -676,6 +677,7 @@ let set_is_a_snapshot ~__context ~self ~value =
 	Db.VDI.set_is_a_snapshot ~__context ~self ~value
 
 let set_snapshot_of ~__context ~self ~value =
+	debug "CA-163811: Xapi_vdi.set_snapshot_of: set_snapshot_of %s to %s" (Ref.string_of self) (Ref.string_of value);
 	Db.VDI.set_snapshot_of ~__context ~self ~value
 
 let set_snapshot_time ~__context ~self ~value =

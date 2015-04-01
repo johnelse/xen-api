@@ -345,8 +345,8 @@ let update_vifs_vbds_and_vgpus ~__context ~snapshot ~vm =
 			let newvdi = List.assoc oldvdi oldvdi_to_newvdi_map in
 			List.iter
 				(fun s ->
-					debug "CA-163811: %s's snapshot_of was %s" (Ref.string_of s) (Ref.string_of (Db.VDI.get_snapshot_of ~__context ~self:s));
 					debug "CA-163811: will set %s's snapshot_of to %s" (Ref.string_of s) (Ref.string_of newvdi);
+					debug "CA-163811: %s's snapshot_of was %s" (Ref.string_of s) (Ref.string_of (Db.VDI.get_snapshot_of ~__context ~self:s));
 					Db.VDI.set_snapshot_of ~__context ~self:s ~value:newvdi)
 				snaps
 		) oldvdi_to_snapshots_map;

@@ -27,7 +27,13 @@ let find_vdi ~__context sr vdi =
 	let open Db_filter_types in
 	let sr = Db.SR.get_by_uuid ~__context ~uuid:sr in
 	match Db.VDI.get_records_where ~__context ~expr:(And((Eq (Field "location", Literal vdi)),Eq (Field "SR", Literal (Ref.string_of sr)))) with
-		| x :: _ -> x
+		| [x] -> x
+		| (x :: _) as vdis -> begin
+			debug "CA-163811: Storage_access.find_vdi found multiple VDIs: [%s]. Will use %s"
+				(String.concat "; " (List.map Ref.string_of (List.map fst vdis)))
+				(Ref.string_of (fst x));
+			x
+		end
 		| _ -> raise No_VDI
 
 (* Find a VDI reference given a name *)
@@ -114,6 +120,7 @@ module SMAPIv1 = struct
 			(fun __context ->
 				let vdi, _ = find_vdi ~__context sr vdi in
 				let snapshot_of, _ = find_vdi ~__context sr snapshot_of in
+				debug "CA-163811: Storage_access.SMAPIv1.set_snapshot_of %s to %s" (Ref.string_of vdi) (Ref.string_of snapshot_of);
 				Db.VDI.set_snapshot_of ~__context ~self:vdi ~value:snapshot_of
 			)
 

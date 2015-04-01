@@ -381,6 +381,7 @@ let update_vdis ~__context ~sr db_vdis vdi_infos =
 			let snapshot_of = find_vdi db_vdi_map vi.snapshot_of in
 			if v.API.vDI_snapshot_of <> snapshot_of then begin
 				debug "%s snapshot_of <- %s" (Ref.string_of r) (Ref.string_of snapshot_of);
+				debug "CA-163811: Xapi_sr.update_vdis: set_snapshot_of %s to %s" (Ref.string_of r) (Ref.string_of snapshot_of);
 				Db.VDI.set_snapshot_of ~__context ~self:r ~value:snapshot_of
 			end;
 			if v.API.vDI_read_only <> vi.read_only then begin
