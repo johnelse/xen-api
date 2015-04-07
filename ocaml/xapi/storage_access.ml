@@ -17,7 +17,7 @@ module XenAPI = Client.Client
 open Fun
 open Storage_interface
 
-module D=Debug.Debugger(struct let name="storage_access" end)
+module D=Debug.Debugger(struct let name="xapi" end)
 open D
 
 exception No_VDI
@@ -29,12 +29,12 @@ let find_vdi ~__context sr vdi =
 	match Db.VDI.get_records_where ~__context ~expr:(And((Eq (Field "location", Literal vdi)),Eq (Field "SR", Literal (Ref.string_of sr)))) with
 		| [x] -> x
 		| (x :: _) as vdis -> begin
-			debug "CA-163811: Storage_access.find_vdi found multiple VDIs: [%s]. Will use %s"
+			warn "CA-163811: Storage_access.find_vdi found multiple VDIs: [%s]. Will use %s"
 				(String.concat "; " (List.map Ref.string_of (List.map fst vdis)))
 				(Ref.string_of (fst x));
 			x
 		end
-		| _ -> raise No_VDI
+		| [] -> raise No_VDI
 
 (* Find a VDI reference given a name *)
 let find_content ~__context ?sr name =
@@ -477,7 +477,11 @@ module SMAPIv1 = struct
 							) in
 						(* PR-1255: modify clone, snapshot to take the same parameters as create? *)
 						let self, _ = find_vdi ~__context sr vi.Smint.vdi_info_location in
+						debug "CA-163811: Storage_access.snapshot_and_clone: self = %s" (Ref.string_of self);
+						debug "CA-163811: Storage_access.snapshot_and_clone: self.location = %s" vi.Smint.vdi_info_location;
 						let clonee, _ = find_vdi ~__context sr vdi_info.vdi in
+						debug "CA-163811: Storage_access.snapshot_and_clone: clonee = %s" (Ref.string_of clonee);
+						debug "CA-163811: Storage_access.snapshot_and_clone: clonee.location = %s" vdi_info.vdi;
 						let content_id = 
 							try 
 								List.assoc "content_id" 
@@ -504,7 +508,7 @@ module SMAPIv1 = struct
 								Sm.vdi_update device_config _type sr self
 							);
 						let vdi = vdi_info_from_db ~__context self in
-						debug "vdi = %s" (string_of_vdi_info vdi);
+						debug "CA-163811: Storage_access.snapshot_and_clone: vdi = %s" (string_of_vdi_info vdi);
 						vdi
 					)
             with 

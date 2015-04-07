@@ -264,7 +264,12 @@ let newvdi ~__context ~sr newvdi =
 	let db_vdis = Db.VDI.get_records_where  ~__context ~expr:(Eq(Field "location", Literal newvdi.vdi)) in
 	Xapi_sr.update_vdis ~__context ~sr db_vdis [ newvdi ];
 	match Db.VDI.get_records_where  ~__context ~expr:(Eq(Field "location", Literal newvdi.vdi)) with
-		| (vdi, _) :: _ -> vdi
+		| (vdi, _) :: [] -> vdi
+		| ((vdi, _) :: _) as vdis ->
+			warn "CA-163811: Xapi_vdi.newvdi found multiple VDIs: [%s]. Will use %s"
+				(String.concat "; " (List.map Ref.string_of (List.map fst vdis)))
+				(Ref.string_of vdi);
+			vdi
 		| [] -> failwith (Printf.sprintf "newvdi failed to create a VDI for %s" (string_of_vdi_info newvdi))
 
 let default_vdi_info =
@@ -411,6 +416,7 @@ open Client
    snapshot operation (e.g. vmhint for NetAPP)
 *)
 let snapshot_and_clone call_f ~__context ~vdi ~driver_params =
+	debug "CA-163811: Xapi_vdi.snapshot_and_clone: vdi = '%s'" (Ref.string_of vdi);
 	let sR = Db.VDI.get_SR ~__context ~self:vdi in
   Sm.assert_pbd_is_plugged ~__context ~sr:sR;
   Xapi_vdi_helpers.assert_managed ~__context ~vdi;
@@ -421,6 +427,7 @@ let snapshot_and_clone call_f ~__context ~vdi ~driver_params =
 	  let task = Context.get_task_id __context in	
 	  let open Storage_interface in
 	  let vdi' = Db.VDI.get_location ~__context ~self:vdi in
+	  debug "CA-163811: Xapi_vdi.snapshot_and_clone: VDI.location = %s" vdi';
 	  let vdi_info = {
 		  default_vdi_info with
 			  vdi = vdi';
@@ -432,12 +439,14 @@ let snapshot_and_clone call_f ~__context ~vdi ~driver_params =
 	  let sr' = Db.SR.get_uuid ~__context ~self:sR in
 	  (* We don't use transform_storage_exn because of the clone/copy fallback below *)
 	  let new_vdi = call_f ~dbg:(Ref.string_of task) ~sr:sr' ~vdi_info in
+	  debug "CA-163811: Xapi_vdi.snapshot_and_clone: new_vdi.vdi = '%s'" (new_vdi.vdi);
 	  newvdi ~__context ~sr:sR new_vdi
   in
 
   (* While we don't have blkback support for pause/unpause we only do this
      for .vhd-based backends. *)
   let newvdi = call_snapshot () in
+	debug "CA-163811: Xapi_vdi.snapshot_and_clone: newvdi = '%s'" (Ref.string_of newvdi);
 
   (* Copy across the metadata which we control *)
   Db.VDI.set_name_label ~__context ~self:newvdi ~value:a.Db_actions.vDI_name_label;
