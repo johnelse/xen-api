@@ -12,7 +12,11 @@
  * GNU Lesser General Public License for more details.
  *)
 
+open Fun
 open Stringext
+
+module D=Debug.Debugger(struct let name="xapi" end)
+open D
 
 type class_id = int64
 type subclass_id = int64
@@ -252,10 +256,36 @@ let of_file path =
 let base_pci_ids_path = "/usr/share/hwdata/pci.ids"
 let nvidia_pci_ids_path = "/usr/share/nvidia/pci.ids"
 
+let supplementary_pci_ids_dir = "/usr/share/hwdata/pci.ids.d"
+
+let get_supplementary_db_paths () =
+	let nvidia_dbs =
+		if Sys.file_exists nvidia_pci_ids_path
+		then [nvidia_pci_ids_path]
+		else []
+	in
+	let supplementary_dbs =
+		if true
+			&& (Sys.file_exists supplementary_pci_ids_dir)
+			&& (Sys.is_directory supplementary_pci_ids_dir)
+		then begin
+			Sys.readdir supplementary_pci_ids_dir
+				|> Array.to_list
+				|> List.filter (String.endswith ".ids")
+				|> List.map (Filename.concat supplementary_pci_ids_dir)
+				|> List.filter (fun path -> not (Sys.is_directory path))
+		end else []
+	in
+	nvidia_dbs @ supplementary_dbs
+
 let open_default () =
-	let db = of_file base_pci_ids_path in
-	if Sys.file_exists nvidia_pci_ids_path then begin
-		let nvidia_db = of_file nvidia_pci_ids_path in
-		merge db nvidia_db
-	end;
-	db
+	let base_db = of_file base_pci_ids_path in
+	List.iter
+		(fun db_path ->
+			try
+				debug "Attempting to merge PCI database %s" db_path;
+				let supplementary_db = of_file db_path in
+				merge base_db supplementary_db
+			with e -> debug "Merging of %s failed: %s" db_path (Printexc.to_string e))
+		(get_supplementary_db_paths ());
+	base_db
