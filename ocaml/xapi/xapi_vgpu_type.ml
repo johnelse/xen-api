@@ -250,13 +250,12 @@ let relevant_vgpu_types pci_db pci_dev_id subsystem_device_id =
 let find_or_create_supported_types ~__context
 		~pci_db ~is_system_display_device pci =
 	let dev_id = Xapi_pci.int_of_id (Db.PCI.get_device_id ~__context ~self:pci) in
-	if is_system_display_device
-	then begin
-		let vendor_id = Xapi_pci.int_of_id (Db.PCI.get_vendor_id ~__context ~self:pci) in
-		if vendor_id = intel_vendor_id
-		then [find_or_create ~__context intel_gvt_g]
-		else []
-	end else begin
+	let vendor_id = Xapi_pci.int_of_id (Db.PCI.get_vendor_id ~__context ~self:pci) in
+	(* For Intel devices, always create the GVT-g type. *)
+	if vendor_id = intel_vendor_id then [find_or_create ~__context intel_gvt_g]
+	(* For any other system display device, don't create any types. *)
+	else if is_system_display_device then []
+	else begin
 		let subsystem_dev_id =
 			match Db.PCI.get_subsystem_device_id ~__context ~self:pci with
 			| "" -> None
