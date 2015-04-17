@@ -131,6 +131,8 @@ install:
 	mkdir -p $(DESTDIR)/etc/bash_completion.d
 	$(IPROG) xe-switch-network-backend-bash-completion $(DESTDIR)/etc/bash_completion.d/xe-switch-network-backend
 	$(IPROG) xe-switch-network-backend $(DESTDIR)$(BINDIR)
+	mkdir -p $(DESTDIR)/usr/share/hwdata/pci.ids.d
+	$(IDATA) gvt-g.pci.ids $(DESTDIR)/usr/share/hwdata/pci.ids.d/gvt-g.pci.ids
 
 sdk-install: install
 	mkdir -p $(SDK)
