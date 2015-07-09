@@ -19,6 +19,72 @@ open Test_highlevel
 open Test_vgpu_common
 open Xapi_vgpu_type
 
+module AssertVGPUTypeAllowed = Generic.Make(Generic.EncapsulateState(struct
+	module Io = struct
+		type input_t = (pgpu_state * vgpu_type)
+		type output_t = string option
+
+		let string_of_input_t (pgpu, vgpu_type) =
+			Printf.sprintf
+				"(pgpu: %s, test vgpu_type: %s)"
+				(string_of_pgpu_state pgpu)
+				(string_of_vgpu_type vgpu_type)
+
+		let string_of_output_t = function
+			| Some code -> Printf.sprintf "Some %s" code
+			| None -> "None"
+	end
+
+	module State = XapiDb
+
+	let load_input __context (pgpu, _) =
+		let (_: API.ref_PGPU) = make_pgpu ~__context pgpu in ()
+
+	let extract_output __context (_, vgpu_type) =
+		let pgpu_ref = List.hd (Db.PGPU.get_all ~__context) in
+		let vgpu_type_ref = find_or_create ~__context vgpu_type in
+		try
+			Xapi_pgpu_helpers.assert_VGPU_type_allowed
+				~__context ~self:pgpu_ref ~vgpu_type:vgpu_type_ref;
+			None
+		with Api_errors.Server_error (code, _) -> Some code
+
+	let tests = [
+		(* Test that we can run a supported VGPU type on an empty PGPU, or a PGPU
+		 * which has some compatible VGPUs already running. *)
+		(default_k1, k100), None;
+		({default_k1 with resident_VGPU_types = [k100]}, k100), None;
+		(default_k2, k200), None;
+		({default_k2 with resident_VGPU_types = [k200; k200]}, k200), None;
+		(* Test that unsupported VGPU types are blocked. *)
+		(default_k1, k200), Some Api_errors.vgpu_type_not_supported;
+		(default_k2, k100), Some Api_errors.vgpu_type_not_supported;
+		(* Test that disabled VGPU types are blocked. *)
+		({default_k1 with enabled_VGPU_types = []}, k100),
+		Some Api_errors.vgpu_type_not_enabled;
+		({default_k1 with enabled_VGPU_types = []}, passthrough_gpu),
+		Some Api_errors.vgpu_type_not_enabled;
+		({default_k2 with enabled_VGPU_types = []}, k200),
+		Some Api_errors.vgpu_type_not_enabled;
+		({default_k2 with enabled_VGPU_types = []}, passthrough_gpu),
+		Some Api_errors.vgpu_type_not_enabled;
+		(* Test that VGPU types not compatible with those already running
+		 * are blocked. *)
+		({default_k1 with resident_VGPU_types = [k100]}, k140q),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+		({default_k1 with resident_VGPU_types = [k100]}, passthrough_gpu),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+		({default_k1 with resident_VGPU_types = [passthrough_gpu]}, k100),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+		({default_k2 with resident_VGPU_types = [k260q]}, k200),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+		({default_k2 with resident_VGPU_types = [k200]}, passthrough_gpu),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+		({default_k2 with resident_VGPU_types = [passthrough_gpu]}, k200),
+		Some Api_errors.vgpu_type_not_compatible_with_running_type;
+	]
+end))
+
 module GetRemainingCapacity = Generic.Make(Generic.EncapsulateState(struct
 	module Io = struct
 		type input_t = (pgpu_state * vgpu_type)
@@ -96,5 +162,6 @@ end))
 let test =
 	"test_pgpu_helpers" >:::
 		[
+			"test_assert_VGPU_type_allowed" >:: AssertVGPUTypeAllowed.test;
 			"test_get_remaining_capacity" >:: GetRemainingCapacity.test;
 		]
