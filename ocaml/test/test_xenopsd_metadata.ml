@@ -12,6 +12,7 @@
  * GNU Lesser General Public License for more details.
  *)
 
+open Fun
 open OUnit
 open Test_common
 open Test_highlevel
@@ -121,6 +122,31 @@ let vgpu_config =
 	Xapi_globs.vgpu_config_key, "/usr/share/nvidia/vgx/grid_k100.conf"
 
 let vgpu_platform_data = [vgpu_manual_setup; vgpu_pci_id; vgpu_config]
+
+module VGPU = Generic.Make(Generic.EncapsulateState(struct
+	module Io = struct
+		type input_t = vm_config
+		type output_t = Xenops_interface.Vgpu.t list
+
+		let string_of_input_t = string_of_vm_config
+		let string_of_output_t vgpus =
+			List.map
+				(Rpc.string_of_rpc ++ Xenops_interface.Vgpu.rpc_of_t)
+				vgpus
+		|> string_of_string_list
+	end
+
+	module State = XapiDb
+
+	let load_input = load_vm_config
+
+	let extract_output __context _ =
+		let metadata = run_create_metadata ~__context in
+		metadata.Metadata.vgpus
+
+	let tests = [
+	]
+end))
 
 module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 	module Io = struct
@@ -233,6 +259,7 @@ let test =
 	"test_xenopsd_metadata" >:::
 		[
 			"test_hvm_serial" >:: HVMSerial.test;
+			"test_VGPU" >:: VGPU.test;
 			"test_videomode" >:: VideoMode.test;
 			"test_videoram" >:: VideoRam.test;
 		]
