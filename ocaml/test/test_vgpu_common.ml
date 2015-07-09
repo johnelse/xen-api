@@ -183,7 +183,7 @@ let make_pgpu ~__context ?(host=Ref.null) ?(gPU_group=Ref.null) pgpu =
 		List.map (find_or_create ~__context) pgpu.supported_VGPU_types
 	in
 	let enabled_VGPU_types =
-		List.map (find_or_create ~__context) pgpu.supported_VGPU_types
+		List.map (find_or_create ~__context) pgpu.enabled_VGPU_types
 	in
 	let pgpu_ref = Test_common.make_pgpu ~__context
 		~pCI
