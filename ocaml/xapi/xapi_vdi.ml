@@ -326,7 +326,7 @@ let introduce_dbonly  ~__context ~uuid ~name_label ~name_description ~sR ~_type 
     with _ -> raise (Api_errors.Server_error (Api_errors.uuid_invalid, [ "VDI"; uuid ]))
   end;
   let ref = Ref.make() in
-  debug "VDI.introduce read_only = %b" read_only;
+  debug "QUICKTEST: VDI.introduce uuid = %s; read_only = %b; managed = %b; name_label = \"%s\"" uuid read_only managed name_label;
   Db.VDI.create ~__context ~ref ~uuid:uuid
     ~name_label ~name_description 
     ~current_operations:[] ~allowed_operations:[]
