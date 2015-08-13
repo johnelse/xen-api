@@ -81,21 +81,29 @@ let control_domain_of_host session_id host =
   | vm :: _ -> vm
 
 (** Scan an SR and return the number of VDIs contained within *)
-let count_vdis session_id sr = 
+let count_vdis test session_id sr = 
   Client.SR.scan !rpc session_id sr;
-  let vdis = Client.SR.get_VDIs !rpc session_id sr in
-  (* NB vhd backends may delete records beneath us *)
-  let managed_vdis = List.filter (fun vdi -> try Client.VDI.get_managed !rpc session_id vdi with Api_errors.Server_error(_ (* handle_invalid *), _) -> false) vdis in
+  let managed_vdis = Client.VDI.get_all_records_where !rpc session_id (Printf.sprintf "field \"SR\"=\"%s\" and field \"managed\"=\"true\"" (Ref.string_of sr)) in
+  debug test (Printf.sprintf "count_vdis found %d VDIs" (List.length managed_vdis));
+  List.iter
+    (fun (vdi_ref, vdi_rec) ->
+      debug test (Printf.sprintf "%s %s %s %b %s"
+        vdi_rec.API.vDI_uuid
+        vdi_rec.API.vDI_name_label
+        (Ref.string_of vdi_ref)
+        vdi_rec.API.vDI_is_a_snapshot
+        (Ref.string_of vdi_rec.API.vDI_snapshot_of)))
+    managed_vdis;
   List.length managed_vdis
 
 (** Common code for VDI.{create,clone,snapshot} which checks to see that a new VDI 
     is successfully created and destroyed by the backend *)
 let vdi_create_clone_snapshot test session_id sr make_fn = 
-    let before = count_vdis session_id sr in
+    let before = count_vdis test session_id sr in
     let vdi = make_fn () in
     let vdi_r = Client.VDI.get_record !rpc session_id vdi in
     debug test (Printf.sprintf "Created VDI has uuid: %s (size = %Ld)" vdi_r.API.vDI_uuid vdi_r.API.vDI_virtual_size);
-    let during = count_vdis session_id sr in
+    let during = count_vdis test session_id sr in
     if during <= before then begin
       debug test (Printf.sprintf "SR has %d VDIs before the test" before);
       debug test (Printf.sprintf "SR has %d VDIs during the test" during);
@@ -226,7 +234,8 @@ let vdi_create_destroy_plug_checksize caps session_id sr =
 (** If VDI_CREATE is supported this will create a fresh VDI, otherwise it will pass an existing
     one for the test function 'f' *)
 let with_arbitrary_vdi caps session_id sr f = 
-  let initial_vdis = count_vdis session_id sr in
+  let test = make_test "Checking for VDI leak" 2 in
+  let initial_vdis = count_vdis test session_id sr in
   if List.mem vdi_create caps then begin
     let vdi = Client.VDI.create ~rpc:!rpc ~session_id ~name_label:"quicktest" ~name_description:""
       ~sR:sr ~virtual_size:4194304L ~_type:`user ~sharable:false ~read_only:false 
@@ -242,9 +251,8 @@ let with_arbitrary_vdi caps session_id sr f =
 	f caps session_id sr vdi
   end;
   (* If everything is supposedly ok then: *)
-  let test = make_test "Checking for VDI leak" 2 in
   start test;
-  let current = count_vdis session_id sr in
+  let current = count_vdis test session_id sr in
   if current <> initial_vdis then begin
     failed test (Printf.sprintf "Initally there were %d VDIs; now there are %d VDIs" initial_vdis current);
     failwith "vdi_leak"
