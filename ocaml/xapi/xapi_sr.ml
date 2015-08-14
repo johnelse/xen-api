@@ -304,9 +304,9 @@ module StringMap = Map.Make(struct type t = string let compare = compare end)
    from a storage backend. *)
 let update_vdis ~__context ~sr db_vdis vdi_infos =
 	let open Storage_interface in
-	debug "QUICKTEST: DB contains VDIs [%s]"
+	debug "QUICKTEST: Xapi_sr.update_vdis: DB contains VDIs [%s]"
 		(String.concat "; " (List.map (fun (_, db_vdi) -> db_vdi.API.vDI_uuid) db_vdis));
-	debug "QUICKTEST: Scan returned VDIs [%s]"
+	debug "QUICKTEST: Xapi_sr.update_vdis: Scan returned VDIs [%s]"
 		(String.concat "; " (List.map (fun vdi_info -> vdi_info.vdi) vdi_infos));
 	let db_vdi_map = List.fold_left
 		(fun m (r, v) ->

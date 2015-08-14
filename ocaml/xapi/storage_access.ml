@@ -268,6 +268,8 @@ module SMAPIv1 = struct
 								Sm.sr_scan device_config _type sr;
 								let open Db_filter_types in
 								let vdis = Db.VDI.get_records_where ~__context ~expr:(Eq(Field "SR", Literal (Ref.string_of sr))) |> List.map snd in
+								debug "QUICKTEST: Storage_access.SR.scan returning VDIs [%s]"
+									(String.concat "; " (List.map (fun vdi -> vdi.API.vDI_uuid) vdis));
 								List.map (vdi_info_of_vdi_rec __context) vdis
 							with
 								| Smint.Not_implemented_in_backend ->
