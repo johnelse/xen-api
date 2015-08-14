@@ -304,6 +304,10 @@ module StringMap = Map.Make(struct type t = string let compare = compare end)
    from a storage backend. *)
 let update_vdis ~__context ~sr db_vdis vdi_infos =
 	let open Storage_interface in
+	debug "QUICKTEST: DB contains VDIs [%s]"
+		(String.concat "; " (List.map (fun (_, db_vdi) -> db_vdi.API.vDI_uuid) db_vdis));
+	debug "QUICKTEST: Scan returned VDIs [%s]"
+		(String.concat "; " (List.map (fun vdi_info -> vdi_info.vdi) vdi_infos));
 	let db_vdi_map = List.fold_left
 		(fun m (r, v) ->
 			StringMap.add v.API.vDI_location (r, v) m
@@ -312,15 +316,15 @@ let update_vdis ~__context ~sr db_vdis vdi_infos =
 	let scan_vdi_map = List.fold_left
 		(fun m v -> StringMap.add v.vdi v m) StringMap.empty vdi_infos in
 	let to_delete = StringMap.merge (fun loc db scan -> match loc, db, scan with
-		| loc, Some (r, v), None -> Some r
+		| loc, Some (r, v), None -> (debug "QUICKTEST: will delete %s" v.API.vDI_uuid; Some r)
 		| _, _, _ -> None
 	) db_vdi_map scan_vdi_map in
 	let to_create = StringMap.merge (fun loc db scan -> match loc, db, scan with
-		| loc, None, Some v -> Some v
+		| loc, None, Some v -> (debug "QUICKTEST: will create %s" v.vdi; Some v)
 		| _, _, _ -> None
 	) db_vdi_map scan_vdi_map in
 	let to_update = StringMap.merge (fun loc db scan -> match loc, db, scan with
-		| loc, Some (r, v), Some vi -> Some (r, v, vi)
+		| loc, Some (r, v), Some vi -> (debug "QUICKTEST: will update %s/%s" v.API.vDI_uuid vi.vdi; Some (r, v, vi))
 		| _, _, _ -> None
 	) db_vdi_map scan_vdi_map in
 
