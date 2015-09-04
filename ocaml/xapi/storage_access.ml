@@ -929,6 +929,29 @@ let on_xapi_start ~__context =
 			Xapi_sm.update_from_query_result ~__context (List.assoc ty existing) query_result
 		) (List.intersect smapiv1_drivers (List.map fst existing));
 	let smapiv2_drivers = List.set_difference to_keep smapiv1_drivers in
+	(* Query the message switch to detect running SMAPIv2 plugins. *)
+	let running_smapiv2_drivers =
+		if !Xcp_client.use_switch then begin
+			let open Message_switch in
+			let open Protocol_unix in
+			let (>>|) result f =
+				match result with
+				| `Error e -> failwith "Error talking to message switch"
+				| `Ok x -> f x
+			in
+			Client.connect ~switch:"/var/run/message-switch/sock" ()
+			>>| fun t ->
+			Client.list ~t ~prefix:!Storage_interface.queue_name ~filter:`Alive ()
+			>>| fun running_smapiv2_driver_queues ->
+			List.filter
+				(fun driver ->
+					List.exists
+						(Xstringext.String.endswith driver)
+						running_smapiv2_driver_queues)
+				smapiv2_drivers
+		end
+		else smapiv2_drivers
+	in
 	(* Create all missing SMAPIv2 plugins *)
 	let query ty =
 		let queue_name = !Storage_interface.queue_name ^ "." ^ ty in
@@ -940,12 +963,12 @@ let on_xapi_start ~__context =
 	List.iter
 		(fun ty ->
 			Xapi_sm.create_from_query_result ~__context (query ty)
-		) (List.set_difference smapiv2_drivers (List.map fst existing));
+		) (List.set_difference running_smapiv2_drivers (List.map fst existing));
 	(* Update all existing SMAPIv2 plugins *)
 	List.iter
 		(fun ty ->
 			Xapi_sm.update_from_query_result ~__context (List.assoc ty existing) (query ty)
-		) (List.intersect smapiv2_drivers (List.map fst existing))
+		) (List.intersect running_smapiv2_drivers (List.map fst existing))
 
 let bind ~__context ~pbd =
     (* Start the VM if necessary, record its uuid *)
