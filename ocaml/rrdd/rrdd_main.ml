@@ -524,10 +524,6 @@ let update_vbds doms =
 								~description:("I/O Requests per second")
 								~value:(Rrd.VT_Int64 (Int64.add b.st_rd_cnt b.st_wr_cnt))
 								~ty:Rrd.Derive ~min:1.0 ~default:true ~units:"requests/s" ())::
-							(VM uuid, ds_make ~name:(vbd_name^"_io_throughput_total")
-								~description:("All " ^ device_name ^ " I/O")
-								~value:(Rrd.VT_Int64 (Int64.add rd_bytes wr_bytes)) ~ty:Rrd.Derive ~min:0.0 ~default:true
-								~units:"B/s" ())::
 							(VM uuid, ds_make ~name:(vbd_name^"_avgqu_sz")
 								~description:("Average I/O queue size for "^ device_name)
 								~value:(Rrd.VT_Int64 avgqu_sz) ~ty:Rrd.Derive ~min:0.0 ~default:true
