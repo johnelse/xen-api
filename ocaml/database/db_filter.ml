@@ -21,6 +21,8 @@ open Db_filter_types
 let string_of_val = function
   | Field x -> "Field " ^ x
   | Literal x -> "Literal " ^ x
+  | Bool x -> "Literal " ^ (string_of_bool x)
+  | Int64 x -> "Literal " (Int64.to_string x)
 
 let rec string_of_expr = 
   let binexpr name a b = Printf.sprintf "%s (%s, %s)" name (string_of_expr a) (string_of_expr b) in

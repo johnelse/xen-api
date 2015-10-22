@@ -15,6 +15,8 @@
 type _val = 
     | Field of string
     | Literal of string
+    | Bool of bool
+    | Int64 of int64
 with rpc
 
 (** Represent a predicate: table row -> bool *)
