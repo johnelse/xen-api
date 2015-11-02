@@ -19,6 +19,67 @@ open Test_highlevel
 open Test_vgpu_common
 open Xapi_vgpu_type
 
+let null_string = Ref.string_of Ref.null
+
+module AssertNoResidentVGPUs = Generic.Make(Generic.EncapsulateState(struct
+	module Io = struct
+		type input_t = (pgpu_state * vgpu_type)
+		type output_t = (exn, unit) Either.t
+
+		let string_of_input_t =
+			Test_printers.(pair string_of_pgpu_state string_of_vgpu_type)
+
+		let string_of_output_t =
+			Test_printers.(either Printexc.to_string unit)
+	end
+
+	module State = XapiDb
+
+	let load_input __context (pgpu, _) =
+		let (_: API.ref_PGPU) = make_pgpu ~__context pgpu in ()
+
+	let extract_output __context (_, vgpu_type) =
+		let pgpu_ref = List.hd (Db.PGPU.get_all ~__context) in
+		let vgpu_type_ref = find_or_create ~__context vgpu_type in
+		try Either.Right (
+			Xapi_pgpu_helpers.assert_no_resident_VGPUs_of_type
+				~__context ~self:pgpu_ref ~vgpu_type:vgpu_type_ref)
+		with e -> Either.Left e
+
+	let tests = [
+		(* Empty PGPUs should not report any resident VGPUs. *)
+		(default_k1, k100), Either.Right ();
+		(default_k1, k140q), Either.Right ();
+		(default_k1, passthrough_gpu), Either.Right ();
+		(default_k2, k200), Either.Right ();
+		(default_k2, k240q), Either.Right ();
+		(default_k2, k260q), Either.Right ();
+		(default_k2, passthrough_gpu), Either.Right ();
+		(* PGPUs with matching resident VGPUs should raise an exception. *)
+		({default_k1 with resident_VGPU_types = [k100]}, k100),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k1 with resident_VGPU_types = [k140q]}, k140q),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k1 with resident_VGPU_types = [passthrough_gpu]}, passthrough_gpu),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k2 with resident_VGPU_types = [k200]}, k200),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k2 with resident_VGPU_types = [k240q]}, k240q),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k2 with resident_VGPU_types = [k260q]}, k260q),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+		({default_k2 with resident_VGPU_types = [passthrough_gpu]}, passthrough_gpu),
+		Either.Left
+			(Api_errors.(Server_error (Api_errors.pgpu_in_use_by_vm, [null_string])));
+	]
+end))
+
 module GetRemainingCapacity = Generic.Make(Generic.EncapsulateState(struct
 	module Io = struct
 		type input_t = (pgpu_state * vgpu_type)
@@ -93,5 +154,6 @@ end))
 let test =
 	"test_pgpu_helpers" >:::
 		[
+			"test_assert_no_resident_VGPUs" >::: AssertNoResidentVGPUs.tests;
 			"test_get_remaining_capacity" >::: GetRemainingCapacity.tests;
 		]
