@@ -152,6 +152,7 @@ let string_of_pgpu_state pgpu =
 
 let make_vgpu ~__context
 		?(vm_ref=Ref.null)
+		?(gPU_group=Ref.null)
 		?(resident_on=Ref.null)
 		?(scheduled_to_be_resident_on=Ref.null)
 		vgpu_type =
@@ -172,6 +173,7 @@ let make_vgpu ~__context
 	Test_common.make_vgpu ~__context
 		~vM:vm_ref
 		~_type:vgpu_type_ref
+		~gPU_group
 		~resident_on
 		~scheduled_to_be_resident_on ()
 
