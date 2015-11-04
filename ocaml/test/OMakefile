@@ -43,6 +43,7 @@ OCAML_OBJS = \
 	test_sm_features \
 	test_gpu_group \
 	test_pci_helpers \
+	test_vgpu_reservations \
 	test_vgpu_type \
 	test_vgpu_common \
 	test_pgpu \
