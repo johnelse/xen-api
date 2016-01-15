@@ -966,6 +966,25 @@ let assert_can_migrate  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
         ~remote:(remote.rpc, remote.session) ();
 
     try
+      let vdi_map =
+        List.map (fun (vdi, sr) ->
+          (* Fake mirror record which will be passed to
+           * inter_pool_metadata_transfer. Only the VDI and SR references will
+           * be used. *)
+          {
+            mr_mirrored = false;
+            mr_dp = None;
+            mr_local_sr = "";
+            mr_local_vdi = "";
+            mr_remote_sr = "";
+            mr_remote_vdi = "";
+            mr_local_xenops_locator = "";
+            mr_remote_xenops_locator = "";
+            mr_local_vdi_reference = vdi;
+            mr_remote_vdi_reference = Ref.null;
+            mr_remote_sr_reference = sr;
+          })
+        vdi_map in
       assert (inter_pool_metadata_transfer ~__context ~remote ~vm ~vdi_map ~vif_map ~dry_run:true ~live:true ~copy = [])
     with Xmlrpc_client.Connection_reset ->
       raise (Api_errors.Server_error(Api_errors.cannot_contact_host, [remote.remote_ip]))
