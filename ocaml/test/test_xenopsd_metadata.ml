@@ -24,6 +24,8 @@ type vm_config = {
 	platform: (string * string) list;
 }
 
+let basic_vm = {oc = []; platform = []}
+
 let string_of_vm_config conf =
 	Printf.sprintf "other_config = %s, platform = %s"
 		(Test_printers.(assoc_list string string) conf.oc)
@@ -77,17 +79,17 @@ module HVMSerial = Generic.Make(Generic.EncapsulateState(struct
 		[
 			(* Should default to "pty" if nothing is set. *)
 			(
-				{oc=[]; platform=[]},
+				basic_vm,
 				Some "pty"
 			);
 			(* other_config value should override default if no platform value. *)
 			(
-				{oc=["hvm_serial", "none"]; platform=[]},
+				{basic_vm with oc=["hvm_serial", "none"]},
 				Some "none"
 			);
 			(* Should be able to disable serial emulation via the platform key. *)
 			(
-				{oc=[]; platform=["hvm_serial", "none"]},
+				{basic_vm with platform=["hvm_serial", "none"]},
 				Some "none"
 			);
 			(* platform value should override other_config value. *)
@@ -103,12 +105,12 @@ module HVMSerial = Generic.Make(Generic.EncapsulateState(struct
 			(* Windows debugger redirects the serial port to tcp - this should be
 			 * configurable via the other_config key. *)
 			(
-				{oc=["hvm_serial", "tcp:1.2.3.4:7001"]; platform=[]},
+				{basic_vm with oc=["hvm_serial", "tcp:1.2.3.4:7001"]},
 				Some "tcp:1.2.3.4:7001"
 			);
 			(* Windows debugger should be configurable via the platform key too. *)
 			(
-				{oc=[]; platform=["hvm_serial", "tcp:1.2.3.4:7001"]},
+				{basic_vm with platform=["hvm_serial", "tcp:1.2.3.4:7001"]},
 				Some "tcp:1.2.3.4:7001"
 			);
 			(* Windows debugger setting via the platform key should override anything
@@ -153,47 +155,47 @@ module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 
 	let tests = [
 		(* Default video mode should be Cirrus. *)
-		{oc=[]; platform=[]}, Vm.Cirrus;
+		basic_vm, Vm.Cirrus;
 		(* Unrecognised video mode should default to Cirrus. *)
-		{oc=[]; platform=["vga", "foo"]}, Vm.Cirrus;
+		{basic_vm with platform=["vga", "foo"]}, Vm.Cirrus;
 		(* Video modes set in the platform map should be respected. *)
-		{oc=[]; platform=["vga", "cirrus"]}, Vm.Cirrus;
-		{oc=[]; platform=["vga", "std"]}, Vm.Standard_VGA;
+		{basic_vm with platform=["vga", "cirrus"]}, Vm.Cirrus;
+		{basic_vm with platform=["vga", "std"]}, Vm.Standard_VGA;
 		(* The IGD passthrough key should be respected. *)
-		{oc=[]; platform=["igd_passthrough", "true"]}, Vm.(IGD_passthrough GVT_d);
+		{basic_vm with platform=["igd_passthrough", "true"]}, Vm.(IGD_passthrough GVT_d);
 		(* The IGD passthrough should override the "vga" key. *)
 		{
-			oc=[];
+			basic_vm with
 			platform=["igd_passthrough", "true"; "vga", "cirrus"]
 		}, Vm.(IGD_passthrough GVT_d);
 		{
-			oc=[];
+			basic_vm with
 			platform=["igd_passthrough", "true"; "vga", "std"]
 		}, Vm.(IGD_passthrough GVT_d);
 		(* We should be able to enable vGPU via the manual setup mode. *)
-		{oc=[]; platform=vgpu_platform_data}, Vm.Vgpu;
+		{basic_vm with platform=vgpu_platform_data}, Vm.Vgpu;
 		(* vGPU mode should override whatever's set for the "vga" key. *)
-		{oc=[]; platform=["vga", "cirrus"] @ vgpu_platform_data}, Vm.Vgpu;
-		{oc=[]; platform=["vga", "std"] @ vgpu_platform_data}, Vm.Vgpu;
+		{basic_vm with platform=["vga", "cirrus"] @ vgpu_platform_data}, Vm.Vgpu;
+		{basic_vm with platform=["vga", "std"] @ vgpu_platform_data}, Vm.Vgpu;
 		(* If somehow only one of the vGPU keys is set, this shouldn't
 		 * trigger vGPU mode. This should only ever happen if a user is
 		 * experimenting with vgpu_manual_setup and has got things wrong. *)
-		{oc=[]; platform=[vgpu_manual_setup; vgpu_pci_id]}, Vm.Cirrus;
+		{basic_vm with platform=[vgpu_manual_setup; vgpu_pci_id]}, Vm.Cirrus;
 		{
-			oc=[];
+			basic_vm with
 			platform=["vga", "cirrus"; vgpu_manual_setup; vgpu_pci_id]
 		}, Vm.Cirrus;
 		{
-			oc=[];
+			basic_vm with
 			platform=["vga", "std"; vgpu_manual_setup; vgpu_pci_id]
 		}, Vm.Standard_VGA;
-		{oc=[]; platform=[vgpu_manual_setup; vgpu_config]}, Vm.Cirrus;
+		{basic_vm with platform=[vgpu_manual_setup; vgpu_config]}, Vm.Cirrus;
 		{
-			oc=[];
+			basic_vm with
 			platform=["vga", "cirrus"; vgpu_manual_setup; vgpu_config]
 		}, Vm.Cirrus;
 		{
-			oc=[];
+			basic_vm with
 			platform=["vga", "std"; vgpu_manual_setup; vgpu_config]
 		}, Vm.Standard_VGA;
 	]
@@ -221,18 +223,18 @@ module VideoRam = Generic.Make(Generic.EncapsulateState(struct
 
 	let tests = [
 		(* Video ram defaults to 4MiB. *)
-		{oc=[]; platform=[]}, 4;
+		{basic_vm with platform=[]}, 4;
 		(* Specifying a different amount of videoram works. *)
-		{oc=[]; platform=["videoram", "8"]}, 8;
+		{basic_vm with platform=["videoram", "8"]}, 8;
 		(* Default videoram should be 16MiB for vGPU. *)
-		{oc = []; platform=vgpu_platform_data}, 16;
+		{basic_vm with platform=vgpu_platform_data}, 16;
 		(* Insufficient videoram values should be overridden for vGPU. *)
-		{oc = []; platform=vgpu_platform_data @ ["videoram", "8"]}, 16;
+		{basic_vm with platform=vgpu_platform_data @ ["videoram", "8"]}, 16;
 		(* videoram values larger than the default should be allowed for vGPU. *)
-		{oc = []; platform=vgpu_platform_data @ ["videoram", "32"]}, 32;
+		{basic_vm with platform=vgpu_platform_data @ ["videoram", "32"]}, 32;
 		(* Other VGA options shouldn't affect the videoram setting. *)
-		{oc = []; platform=["vga", "cirrus"]}, 4;
-		{oc = []; platform=["vga", "cirrus"; "videoram", "8"]}, 8;
+		{basic_vm with platform=["vga", "cirrus"]}, 4;
+		{basic_vm with platform=["vga", "cirrus"; "videoram", "8"]}, 8;
 	]
 end))
 
@@ -265,12 +267,12 @@ module VgpuExtraArgs = Generic.Make(Generic.EncapsulateState(struct
 
 	let tests = [
 		(* No vgpu_extra_args. *)
-		{oc = []; platform = []}, "/usr/share/nvidia/vgx/grid_k100.conf";
+		{basic_vm with platform = []}, "/usr/share/nvidia/vgx/grid_k100.conf";
 		(* One key-value pair in vgpu_extra_args. *)
-		{oc = []; platform = ["vgpu_extra_args", "foo=bar"]},
+		{basic_vm with platform = ["vgpu_extra_args", "foo=bar"]},
 		"/usr/share/nvidia/vgx/grid_k100.conf,foo=bar";
 		(* Two key-value pairs in vgpu_extra_args. *)
-		{oc = []; platform = ["vgpu_extra_args", "foo=bar,baz=123"]},
+		{basic_vm with platform = ["vgpu_extra_args", "foo=bar,baz=123"]},
 		"/usr/share/nvidia/vgx/grid_k100.conf,foo=bar,baz=123";
 	]
 end))
