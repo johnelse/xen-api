@@ -301,12 +301,11 @@ let is_boot_file_whitelisted filename =
 let builder_of_vm ~__context (vmref, vm) timeoffset pcis vgpu =
 	let open Vm in
 
+	let is_integrated pci = pci.Pci.address.Pci.bus = 0 in
+
 	let video_mode =
 		if vgpu then Vgpu
-		else if (Platform.is_true
-			~key:Platform.igd_passthru_key
-			~platformdata:vm.API.vM_platform
-			~default:false)
+		else if (List.exists is_integrated pcis)
 		then (IGD_passthrough GVT_d)
 		else
 			match string vm.API.vM_platform "cirrus" Platform.vga with
