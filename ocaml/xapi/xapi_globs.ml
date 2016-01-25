@@ -498,8 +498,6 @@ let vgpu_pci_key = "vgpu_pci_id"
 let vgpu_config_key = "vgpu_config"
 let vgpu_extra_args_key = "vgpu_extra_args"
 
-let igd_passthru_key = "igd_passthrough"
-
 let vgt_low_gm_sz = "vgt_low_gm_sz"
 let vgt_high_gm_sz = "vgt_high_gm_sz"
 let vgt_fence_sz = "vgt_fence_sz"

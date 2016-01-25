@@ -106,7 +106,6 @@ module Platform = struct
 	let vga = "vga"
 	let vgpu_pci_id = Xapi_globs.vgpu_pci_key
 	let vgpu_config = Xapi_globs.vgpu_config_key
-	let igd_passthru_key = Xapi_globs.igd_passthru_key
 	let featureset = "featureset"
 
 	(* This is only used to block the 'present multiple physical cores as one big hyperthreaded core' feature *)
