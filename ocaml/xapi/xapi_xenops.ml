@@ -298,7 +298,7 @@ let is_boot_file_whitelisted filename =
 		(* avoid ..-style attacks and other weird things *)
 	&&(safe_str filename)
 
-let builder_of_vm ~__context (vmref, vm) timeoffset pci_passthrough vgpu =
+let builder_of_vm ~__context (vmref, vm) timeoffset pcis vgpu =
 	let open Vm in
 
 	let video_mode =
@@ -362,7 +362,7 @@ let builder_of_vm ~__context (vmref, vm) timeoffset pci_passthrough vgpu =
 			keymap = Some (string vm.API.vM_platform "en-us" "keymap");
 			vnc_ip = None (*None PR-1255*);
 			pci_emulations = pci_emulations;
-			pci_passthrough = pci_passthrough;
+			pci_passthrough = (pcis <> []);
 			boot_order = string vm.API.vM_HVM_boot_params "cd" "order";
 			qemu_disk_cmdline = bool vm.API.vM_platform false "qemu_disk_cmdline";
 			qemu_stubdom = bool vm.API.vM_platform false "qemu_stubdom";
@@ -698,7 +698,7 @@ module MD = struct
 						(of_gvt_g_vgpu ~__context vm vgpu_record) :: acc)
 				[] vm.API.vM_VGPUs
 
-	let of_vm ~__context (vmref, vm) vbds pci_passthrough vgpu =
+	let of_vm ~__context (vmref, vm) vbds pcis vgpu =
 		let on_crash_behaviour = function
 			| `preserve -> [ Vm.Pause ]
 			| `coredump_and_restart -> [ Vm.Coredump; Vm.Start ]
@@ -809,7 +809,7 @@ module MD = struct
 			xsdata = vm.API.vM_xenstore_data;
 			platformdata = platformdata;
 			bios_strings = vm.API.vM_bios_strings;
-			ty = builder_of_vm ~__context (vmref, vm) timeoffset pci_passthrough vgpu;
+			ty = builder_of_vm ~__context (vmref, vm) timeoffset pcis vgpu;
 			suppress_spurious_page_faults = (try List.assoc "suppress-spurious-page-faults" vm.API.vM_other_config = "true" with _ -> false);
 			machine_address_size = (try Some(int_of_string (List.assoc "machine-address-size" vm.API.vM_other_config)) with _ -> None);
 			memory_static_max = vm.API.vM_memory_static_max;
@@ -910,7 +910,7 @@ let generate_xenops_state ~__context ~self ~vm ~vbds ~pcis ~vgpus =
 		debug "Successfully parsed old last_booted_record format - translating to new format so that xenopsd can resume the VM.";
 		let module Client = (val make_client (queue_of_vmr vm): XENOPS) in
 		let vm = MD.of_vm ~__context
-			(self, vm_to_resume) vbds (pcis <> []) (vgpus <> [])
+			(self, vm_to_resume) vbds pcis (vgpus <> [])
 		in
 		let dbg = Context.string_of_task __context in
 		Client.VM.generate_state_string dbg vm
@@ -936,7 +936,7 @@ let create_metadata ~__context ~upgrade ~self =
 			Some(generate_xenops_state ~__context ~self ~vm ~vbds ~pcis ~vgpus)
 		end else None in
 	let open Metadata in {
-		vm = MD.of_vm ~__context (self, vm) vbds (pcis <> []) (vgpus <> []);
+		vm = MD.of_vm ~__context (self, vm) vbds pcis (vgpus <> []);
 		vbds = vbds';
 		vifs = vifs';
 		pcis = pcis;
