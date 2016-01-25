@@ -180,6 +180,14 @@ module VideoMode = Generic.Make(Generic.EncapsulateState(struct
 		(* Video modes set in the platform map should be respected. *)
 		{basic_vm with platform=["vga", "cirrus"]}, Vm.Cirrus;
 		{basic_vm with platform=["vga", "std"]}, Vm.Standard_VGA;
+		(* For standard passthrough, the vga key should be respected. *)
+		{basic_vm with pcis=["0000:0a:00.0"]}, Vm.Cirrus;
+		{basic_vm with platform=["vga", "cirrus"]; pcis=["0000:0a:00.0"]}, Vm.Cirrus;
+		{basic_vm with platform=["vga", "std"]; pcis=["0000:0a:00.0"]}, Vm.Standard_VGA;
+		(* For integrated GPU passthrough (bus = 0), the vga key should be ignored. *)
+		{basic_vm with pcis=["0000:00:00.0"]}, Vm.(IGD_passthrough GVT_d);
+		{basic_vm with platform=["vga", "cirrus"]; pcis=["0000:00:00.0"]}, Vm.(IGD_passthrough GVT_d);
+		{basic_vm with platform=["vga", "std"]; pcis=["0000:00:00.0"]}, Vm.(IGD_passthrough GVT_d);
 		(* We should be able to enable vGPU via the manual setup mode. *)
 		{basic_vm with platform=vgpu_platform_data}, Vm.Vgpu;
 		(* vGPU mode should override whatever's set for the "vga" key. *)
