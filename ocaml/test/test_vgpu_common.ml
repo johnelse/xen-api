@@ -126,6 +126,13 @@ type pgpu_state = {
 	scheduled_VGPU_types: vgpu_type list;
 }
 
+let basic_gpu = {
+	supported_VGPU_types = [passthrough_gpu];
+	enabled_VGPU_types = [passthrough_gpu];
+	resident_VGPU_types = [];
+	scheduled_VGPU_types = [];
+}
+
 let default_k1 = {
 	supported_VGPU_types = k1_vgpu_types;
 	enabled_VGPU_types = k1_vgpu_types;
@@ -151,6 +158,7 @@ let string_of_pgpu_state pgpu =
 		(Test_printers.(list string_of_vgpu_type) pgpu.scheduled_VGPU_types)
 
 let make_vgpu ~__context
+		?(gPU_group=Ref.null)
 		?(vm_ref=Ref.null)
 		?(resident_on=Ref.null)
 		?(scheduled_to_be_resident_on=Ref.null)
@@ -170,6 +178,7 @@ let make_vgpu ~__context
 		Db.PCI.add_attached_VMs ~__context ~self:pci_ref ~value:vm_ref
 	end;
 	Test_common.make_vgpu ~__context
+		~gPU_group
 		~vM:vm_ref
 		~_type:vgpu_type_ref
 		~resident_on

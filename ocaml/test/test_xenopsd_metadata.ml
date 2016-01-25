@@ -22,14 +22,29 @@ let test_vm_name = "__test_vm"
 type vm_config = {
 	oc: (string * string) list;
 	platform: (string * string) list;
+	pcis: string list;
 }
 
-let basic_vm = {oc = []; platform = []}
+let basic_vm = {oc = []; platform = []; pcis = []}
 
 let string_of_vm_config conf =
-	Printf.sprintf "other_config = %s, platform = %s"
+	Printf.sprintf "other_config = %s, platform = %s, pcis = %s"
 		(Test_printers.(assoc_list string string) conf.oc)
 		(Test_printers.(assoc_list string string) conf.platform)
+		(Test_printers.(list string) conf.pcis)
+
+let load_pcis ~__context host vm pcis =
+	let gPU_group = make_gpu_group ~__context () in
+	List.iter
+		(fun pci ->
+			let open Test_vgpu_common in
+			let (_: API.ref_PGPU) =
+				make_pgpu ~__context ~address:pci ~host ~gPU_group basic_gpu in
+			let (_: API.ref_VGPU) =
+				make_vgpu ~__context ~gPU_group ~vm_ref:self
+					Xapi_vgpu_type.passthrough_gpu
+			in ())
+		pcis;
 
 let load_vm_config __context conf =
 	let (self: API.ref_VM) = make_vm ~__context
@@ -39,6 +54,10 @@ let load_vm_config __context conf =
 		~platform:conf.platform
 		()
 	in
+	let host = make_host ~__context () in
+	load_pcis ~__context host self conf.pcis;
+	let vm_record = Db.VM.get_record ~__context ~self in
+	Vgpuops.create_vgpus ~__context host (self, vm_record) true;
 	let flags = [
 		Xapi_globs.cpu_info_vendor_key, "AuthenticAMD";
 		Xapi_globs.cpu_info_features_key, "deadbeef-deadbeef";
@@ -94,12 +113,12 @@ module HVMSerial = Generic.Make(Generic.EncapsulateState(struct
 			);
 			(* platform value should override other_config value. *)
 			(
-				{oc=["hvm_serial", "none"]; platform=["hvm_serial", "pty"]},
+				{basic_vm with oc=["hvm_serial", "none"]; platform=["hvm_serial", "pty"]},
 				Some "pty"
 			);
 			(* platform value should override other_config value. *)
 			(
-				{oc=["hvm_serial", "pty"]; platform=["hvm_serial", "none"]},
+				{basic_vm with oc=["hvm_serial", "pty"]; platform=["hvm_serial", "none"]},
 				Some "none"
 			);
 			(* Windows debugger redirects the serial port to tcp - this should be
@@ -116,7 +135,7 @@ module HVMSerial = Generic.Make(Generic.EncapsulateState(struct
 			(* Windows debugger setting via the platform key should override anything
 			 * set in other_config. *)
 			(
-				{oc=["hvm_serial", "none"]; platform=["hvm_serial", "tcp:1.2.3.4:7001"]},
+				{basic_vm with oc=["hvm_serial", "none"]; platform=["hvm_serial", "tcp:1.2.3.4:7001"]},
 				Some "tcp:1.2.3.4:7001"
 			);
 		]
