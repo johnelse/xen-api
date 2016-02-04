@@ -385,9 +385,9 @@ module AssertNewVMPreservesHAPlan = Generic.Make(Generic.EncapsulateState(struct
 		in
 		let vm_ref =
 			load_vm ~__context ~vm ~local_sr ~shared_sr ~local_net ~shared_net in
+		let vm_record = Db.VM.get_record ~__context ~self:vm_ref in
+		let ha_vm = Agility.HA_VM.In_db (vm_ref, vm_record) in
 		try
-			let vm_record = Db.VM.get_record ~__context ~self:vm_ref in
-			let ha_vm = Agility.HA_VM.In_db (vm_ref, vm_record) in
 			Either.Right
 				(Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context ha_vm)
 		with e -> Either.Left e
