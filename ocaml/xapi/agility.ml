@@ -107,6 +107,20 @@ let caching_vm_t_assert_agile ~__context (ok_srs, ok_networks) vm vm_t =
 	if vm_t.API.vM_VGPUs <> [] then
 		raise (Api_errors.Server_error
 			(Api_errors.vm_has_vgpu, [Ref.string_of vm]));
+	let check_sr ok_srs sr =
+		if SRSet.mem sr ok_srs
+		then ok_srs
+		else
+			if not (is_sr_properly_shared ~__context ~self:sr)
+			then raise Api_errors.(Server_error(ha_constraint_violation_sr_not_shared, [Ref.string_of sr]))
+			else SRSet.add sr ok_srs in
+	let check_network ok_networks network =
+		if NetworkSet.mem network ok_networks
+		then ok_networks
+		else
+			if not (is_network_properly_shared ~__context ~self:network)
+			then raise Api_errors.(Server_error(ha_constraint_violation_network_not_shared, [Ref.string_of network]))
+			else NetworkSet.add network ok_networks in
 	(* All referenced VDIs should be in shared SRs *)
 	let check_vbd ok_srs vbd =
 		if Db.VBD.get_empty ~__context ~self:vbd
@@ -114,21 +128,11 @@ let caching_vm_t_assert_agile ~__context (ok_srs, ok_networks) vm vm_t =
 		else
 			let vdi = Db.VBD.get_VDI ~__context ~self:vbd in
 			let sr = Db.VDI.get_SR ~__context ~self:vdi in
-			if SRSet.mem sr ok_srs
-			then ok_srs
-			else
-				if not (is_sr_properly_shared ~__context ~self:sr)
-				then raise (Api_errors.Server_error(Api_errors.ha_constraint_violation_sr_not_shared, [Ref.string_of sr]))
-				else SRSet.add sr ok_srs in
+			check_sr ok_srs sr in
 	(* All referenced VIFs should be on shared networks *)
 	let check_vif ok_networks vif =
 		let network = Db.VIF.get_network ~__context ~self:vif in
-		if NetworkSet.mem network ok_networks
-		then ok_networks
-		else
-			if not (is_network_properly_shared ~__context ~self:network)
-			then raise (Api_errors.Server_error(Api_errors.ha_constraint_violation_network_not_shared, [Ref.string_of network]))
-			else NetworkSet.add network ok_networks in
+		check_network ok_networks network in
 	let ok_srs = List.fold_left check_vbd ok_srs vm_t.API.vM_VBDs in
 	let ok_networks = List.fold_left check_vif ok_networks vm_t.API.vM_VIFs in
 	(ok_srs, ok_networks)
