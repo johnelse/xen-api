@@ -257,7 +257,7 @@ let assert_can_live_import __context rpc session_id state vm_record =
 							List.assoc Constants.storage_migrate_vif_map_key vif.API.vIF_other_config
 							|> Ref.of_string
 						with Not_found ->
-							Importexport.get_default_sr rpc session_id)
+							failwith "no VIF mapped")
 				|> Listext.List.setify
 			in
 			let ha_vm = Agility.HA_VM.Not_in_db (localhost, srs, networks, vm_record) in
