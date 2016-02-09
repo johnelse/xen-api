@@ -188,16 +188,8 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 			vms_to_ensure_running
 	in
 
-	let agile_vms, not_agile_vms = Agility.partition_vm_ps_by_agile ~__context
-		(Listext.List.filter_map
-			(function
-				| HA_VM.In_db (vm_ref, vm_record) -> Some (vm_ref, vm_record)
-				| HA_VM.Not_in_db _ -> None)
-			vms_to_ensure_running)
-		|> (fun (agile_vms, not_agile_vms) ->
-				List.map HA_VM.of_pair agile_vms,
-				List.map HA_VM.of_pair not_agile_vms)
-	in
+	let agile_vms, not_agile_vms =
+		Agility.partition_vm_ps_by_agile ~__context vms_to_ensure_running in
 
 	(* If a VM is marked as resident on a live_host then it will already be accounted for in the host's current free memory. *)
 	let vm_accounted_to_host vm =

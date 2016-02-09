@@ -102,11 +102,16 @@ module NetworkSet = Set.Make(struct type t = API.ref_network let compare = compa
 
 let empty_cache = (SRSet.empty, NetworkSet.empty)
 
-let caching_vm_t_assert_agile ~__context (ok_srs, ok_networks) vm vm_t =
+let caching_vm_t_assert_agile ~__context (ok_srs, ok_networks) ha_vm =
 	(* Any kind of vGPU means that the VM is not agile. *)
-	if vm_t.API.vM_VGPUs <> [] then
+	let vm_rec = HA_VM.record_of ha_vm in
+	let vm_ref =
+		try HA_VM.ref_of ha_vm
+		with _ -> Ref.null
+	in
+	if vm_rec.API.vM_VGPUs <> [] then
 		raise (Api_errors.Server_error
-			(Api_errors.vm_has_vgpu, [Ref.string_of vm]));
+			(Api_errors.vm_has_vgpu, [Ref.string_of vm_ref]));
 	let check_sr ok_srs sr =
 		if SRSet.mem sr ok_srs
 		then ok_srs
@@ -133,19 +138,28 @@ let caching_vm_t_assert_agile ~__context (ok_srs, ok_networks) vm vm_t =
 	let check_vif ok_networks vif =
 		let network = Db.VIF.get_network ~__context ~self:vif in
 		check_network ok_networks network in
-	let ok_srs = List.fold_left check_vbd ok_srs vm_t.API.vM_VBDs in
-	let ok_networks = List.fold_left check_vif ok_networks vm_t.API.vM_VIFs in
-	(ok_srs, ok_networks)
+	match ha_vm with
+	| HA_VM.In_db (_, vm_rec) -> begin
+		let ok_srs = List.fold_left check_vbd ok_srs vm_rec.API.vM_VBDs in
+		let ok_networks = List.fold_left check_vif ok_networks vm_rec.API.vM_VIFs in
+		(ok_srs, ok_networks)
+	end
+	| HA_VM.Not_in_db (_, srs, networks, _) -> begin
+		let ok_srs = List.fold_left check_sr ok_srs srs in
+		let ok_networks = List.fold_left check_network ok_networks networks in
+		(ok_srs, ok_networks)
+	end
 
 let vm_assert_agile ~__context ~self =
 	let vm_t = Db.VM.get_record ~__context ~self in
-	let _ = caching_vm_t_assert_agile ~__context empty_cache self vm_t in
-	()
+	let _ =
+		caching_vm_t_assert_agile ~__context empty_cache (HA_VM.In_db (self, vm_t))
+	in ()
 
 let partition_vm_ps_by_agile ~__context vm_ps =
-	let distinguish_vm (agile_vm_ps, not_agile_vm_ps, cache) ((vm, vm_t) as vm_p) =
+	let distinguish_vm (agile_vm_ps, not_agile_vm_ps, cache) vm_p =
 		try
-			let cache = caching_vm_t_assert_agile ~__context cache vm vm_t in
+			let cache = caching_vm_t_assert_agile ~__context cache vm_p in
 			(vm_p :: agile_vm_ps, not_agile_vm_ps, cache)
 		with _ ->
 		  (agile_vm_ps, vm_p :: not_agile_vm_ps, cache) in
