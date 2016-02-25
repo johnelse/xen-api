@@ -47,11 +47,11 @@ let compute_evacuation_plan ~__context total_hosts remaining_hosts vms_and_snaps
   let config = { Binpack.hosts = hosts; vms = vms; placement = []; total_hosts = total_hosts; num_failures = 1 } in
   Binpack.check_configuration config;
 
-  debug "Planning configuration for offline agile VMs = %s" 
+  Printf.printf "Planning configuration for offline agile VMs = %s\n%!" 
     (Binpack.string_of_configuration 
        (fun x -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref x) (Db.Host.get_hostname ~__context ~self:x))
        (fun x -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref x) (Db.VM.get_name_label ~__context ~self:x)) config);
-  debug "VMs to attempt to evacuate: [ %s ]" 
+  Printf.printf "VMs to attempt to evacuate: [ %s ]\n%!" 
     (String.concat "; " (List.map (fun (r, record) -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref r) record.API.vM_name_label) vms_and_snapshots));
   let h = Binpack.choose_heuristic config in
   h.Binpack.get_specific_plan config (List.map fst vms_and_snapshots)
@@ -91,10 +91,10 @@ let host_of_non_agile_vm ~__context all_hosts_and_snapshots_sorted vm_res =
 		| (host, host_snapshot) :: _ ->
 			(* Multiple hosts are possible because "not agile" means "not restartable on every host". It is 
 			   possible to unplug PBDs so that only a proper subset of hosts (not the singleton element) supports a VM. *)
-			debug "Non-agile VM %s considered pinned to Host %s (%s)" (VMResources.to_string vm_res) (Helpers.short_string_of_ref host) host_snapshot.API.host_hostname;
+			Printf.printf "Non-agile VM %s considered pinned to Host %s (%s)\n%!" (VMResources.to_string vm_res) (Helpers.short_string_of_ref host) host_snapshot.API.host_hostname;
 			[ vm_res, host ]
 		| [] ->
-			warn "No host could support protected xHA VM: %s (%s)" (VMResources.to_string vm_res) (snapshot.API.vM_name_label);
+			Printf.printf "No host could support protected xHA VM: %s (%s)\n%!" (VMResources.to_string vm_res) (snapshot.API.vM_name_label);
 			[]
 	end
 	| {status = `Incoming host} -> [vm_res, host]
@@ -205,7 +205,7 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 		String.concat "; "
 			(List.map (fun (vm_res, host) -> Printf.sprintf "%s -> %s" (VMResources.to_string vm_res) (string_of_host host)) p) in
 
-	debug "Protected VMs: [ %s ]" (String.concat "; " (List.map (fun vm -> VMResources.to_string vm) vms_to_ensure_running));
+	Printf.printf "Protected VMs: [ %s ]\n%!" (String.concat "; " (List.map (fun vm -> VMResources.to_string vm) vms_to_ensure_running));
 
 	(* Current free memory on all hosts (does not include any for *offline* protected VMs ie those for which (vm_accounted_to_host vm) 
 	   returns None) Also apply the supplied counterfactual-reasoning changes (if any) *)
@@ -243,7 +243,7 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 
 	(* The restart plan for offline non-agile VMs is just the map VM -> pinned Host *)
 	let non_agile_restart_plan = List.filter (fun (vm, _) -> vm_accounted_to_host vm = None) pinned in
-	debug "Restart plan for non-agile offline VMs: [ %s ]" (string_of_plan non_agile_restart_plan);
+	Printf.printf "Restart plan for non-agile offline VMs: [ %s ]\n%!" (string_of_plan non_agile_restart_plan);
 
 	(* Update the host free memory to take this plan into account. Note we don't update the VM placement because that only 
 	   considers agile VMs. Non-agile VMs are treated as per-host overhead. *)
@@ -262,19 +262,19 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 	let config = { Binpack.hosts = hosts_and_memory; vms = agile_vms_and_memory; placement = agile_vm_placement
 				 ; total_hosts = total_hosts; num_failures = num_failures } in
 	Binpack.check_configuration config;
-	debug "Planning configuration for offline agile VMs = %s" (Binpack.string_of_configuration string_of_host VMResources.to_string config);
+	Printf.printf "Planning configuration for offline agile VMs = %s\n%!" (Binpack.string_of_configuration string_of_host VMResources.to_string config);
 	let h = Binpack.choose_heuristic config in
 
 	(* Figure out how we could start as many of the agile VMs as possible *)
-	debug "Computing a specific plan for the failure of VMs: [ %s ]" (String.concat "; " (List.map VMResources.to_string agile_vm_failed));
+	Printf.printf "Computing a specific plan for the failure of VMs: [ %s ]\n%!" (String.concat "; " (List.map VMResources.to_string agile_vm_failed));
 	let agile_restart_plan = h.Binpack.get_specific_plan config agile_vm_failed in
-	debug "Restart plan for agile offline VMs: [ %s ]" (string_of_plan agile_restart_plan);
+	Printf.printf "Restart plan for agile offline VMs: [ %s ]\n%!" (string_of_plan agile_restart_plan);
 
 	let vms_restarted = List.map fst agile_restart_plan in
 	(* List the protected VMs which are not already running and weren't in the restart plan *)
 	let vms_not_restarted = List.filter (fun vm -> vm_accounted_to_host vm = None && not(VMResources.mem vm vms_restarted)) vms_to_ensure_running in
 	if vms_not_restarted <> []
-	then warn "Some protected VMs could not be restarted: [ %s ]" (String.concat "; " (List.map VMResources.to_string vms_not_restarted));
+	then Printf.printf "Some protected VMs could not be restarted: [ %s ]\n%!" (String.concat "; " (List.map VMResources.to_string vms_not_restarted));
 
 	(* Applying the plan means:
 	   1. subtract from each host the memory needed to start the VMs in the plan; and
@@ -283,7 +283,7 @@ let compute_restart_plan ~__context ~all_protected_vms ~live_set ?(change=no_con
 	(* All agile VMs which were offline have all been 'restarted' provided vms_not_restarted <> []
 	   If vms_not_restarted = [] then some VMs will have been left out. *)
 	Binpack.check_configuration config;
-	debug "Planning configuration for future failures = %s" (Binpack.string_of_configuration string_of_host VMResources.to_string config);
+	Printf.printf "Planning configuration for future failures = %s\n%!" (Binpack.string_of_configuration string_of_host VMResources.to_string config);
 	non_agile_restart_plan @ agile_restart_plan, config, vms_not_restarted, not_agile_vms <> []
 
 (** Returned by the plan_for_n_failures function *)
@@ -310,10 +310,10 @@ let plan_for_n_failures ~__context ~all_protected_vms ?live_set ?(change = no_co
 
     (* Could some VMs not be started? If so we're overcommitted before we started. *)
     if vms_not_restarted <> [] then begin
-      error "Even with no Host failures this Pool cannot start the configured protected VMs.";
+      Printf.printf "Even with no Host failures this Pool cannot start the configured protected VMs.\n%!";
       No_plan_exists
     end else begin
-      debug "plan_for_n_failures config = %s"
+      Printf.printf "plan_for_n_failures config = %s\n%!"
         (Binpack.string_of_configuration
           (fun x -> Printf.sprintf "%s (%s)" (Helpers.short_string_of_ref x) (Db.Host.get_hostname ~__context ~self:x))
           VMResources.to_string config);
@@ -326,7 +326,7 @@ let plan_for_n_failures ~__context ~all_protected_vms ?live_set ?(change = no_co
     end
   with
   | e ->
-      error "Unexpected error in HA VM failover planning function: %s" (ExnHelper.string_of_exn e);
+      Printf.printf "Unexpected error in HA VM failover planning function: %s\n%!" (ExnHelper.string_of_exn e);
       No_plan_exists
 
 let compute_max_host_failures_to_tolerate ~__context ?live_set ?protected_vms () =
@@ -420,15 +420,15 @@ let assert_configuration_change_preserves_ha_plan ~__context c =
     match plan_for_n_failures ~__context ~all_protected_vms ~live_set to_tolerate with
     | Plan_exists_excluding_non_agile_VMs 
     | No_plan_exists -> 
-	debug "assert_configuration_change_preserves_ha_plan: no plan currently exists; cannot get worse"
+	Printf.printf "assert_configuration_change_preserves_ha_plan: no plan currently exists; cannot get worse\n%!"
     | Plan_exists_for_all_VMs -> begin
       (* Does the plan break? *)
       match plan_for_n_failures ~__context ~all_protected_vms ~live_set ~change:c to_tolerate with
       | Plan_exists_for_all_VMs -> 
-	  debug "assert_configuration_change_preserves_ha_plan: plan exists after change"
+	  Printf.printf "assert_configuration_change_preserves_ha_plan: plan exists after change\n%!"
       | Plan_exists_excluding_non_agile_VMs 
       | No_plan_exists ->
-	  debug "assert_configuration_change_preserves_ha_plan: proposed change breaks plan";
+	  Printf.printf "assert_configuration_change_preserves_ha_plan: proposed change breaks plan\n%!";
 	  raise (Api_errors.Server_error(Api_errors.ha_operation_would_break_failover_plan, []))
       end
   end
