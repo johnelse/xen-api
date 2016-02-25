@@ -597,6 +597,10 @@ module Forward = functor(Local: Custom_actions.CUSTOM_ACTIONS) -> struct
 			info "Pool.set_ha_host_failures_to_tolerate: pool = '%s'; value = %Ld" (pool_uuid ~__context self) value;
 			Local.Pool.set_ha_host_failures_to_tolerate ~__context ~self ~value
 
+		let ha_assert_can_receive_vm ~__context ~self ~host ~vm ~networks ~srs =
+			info "Pool.ha_assert_can_receive_vm: pool = '%s'" (current_pool_uuid ~__context);
+			Local.Pool.ha_assert_can_receive_vm ~__context ~self ~host ~vm ~networks ~srs
+
 		let ha_schedule_plan_recomputation ~__context =
 			info "Pool.ha_schedule_plan_recomputation: pool = '%s'" (current_pool_uuid ~__context);
 			Local.Pool.ha_schedule_plan_recomputation ~__context

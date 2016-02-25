@@ -1217,6 +1217,20 @@ let set_ha_host_failures_to_tolerate ~__context ~self ~value =
   Db.Pool.set_ha_host_failures_to_tolerate ~__context ~self ~value;
 	let (_: bool) = Xapi_ha_vm_failover.update_pool_status ~__context () in ()
 
+let ha_assert_can_receive_vm ~__context ~self ~host ~vm ~networks ~srs =
+	let vm_rec = API.Legacy.From.vM_t "" (Xml.parse_string vm) in
+	let vm_resources = Agility.VMResources.({
+		status = `Incoming host;
+		vm_rec;
+		networks;
+		srs;
+	}) in
+	if vm_rec.API.vM_ha_restart_priority = Constants.ha_restart
+	then Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context vm_resources
+	else
+		Xapi_ha_vm_failover.assert_vm_placement_preserves_ha_plan ~__context
+			~arriving:[host, vm_resources] ()
+
 let ha_schedule_plan_recomputation ~__context = 
   Xapi_ha.Monitor.plan_out_of_date := true
 

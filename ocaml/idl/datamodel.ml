@@ -6397,6 +6397,21 @@ let pool_create_new_blob = call
   ~allowed_roles:_R_POOL_OP
   ()
 
+let pool_ha_assert_can_receive_vm = call
+  ~name:"ha_assert_can_receive_vm"
+  ~in_product_since:rel_dundee
+  ~doc:"Given a VM record and sets of networks and SRs to which the VM needs access, check that a VM can be received by the pool via SXM without breaking the failover plan"
+  ~params:[
+    Ref _pool, "self", "The pool";
+    Ref _host, "host", "The host on which the VM should run";
+    String, "vm", "A record representing the incoming VM";
+    Set(Ref _network), "networks", "The set of networks to which the VM needs access";
+    Set(Ref _sr), "srs", "The set of SRs to which the VM needs access";
+  ]
+  ~hide_from_docs:true
+  ~allowed_roles:_R_VM_POWER_ADMIN
+  ()
+
 let pool_set_ha_host_failures_to_tolerate = call
   ~name:"set_ha_host_failures_to_tolerate"
   ~in_product_since:rel_orlando
@@ -6777,6 +6792,7 @@ let pool =
 			; pool_ha_compute_vm_failover_plan
 			; pool_set_ha_host_failures_to_tolerate
 			; pool_create_new_blob
+			; pool_ha_assert_can_receive_vm
 			; pool_ha_schedule_plan_recomputation
 			; pool_enable_binary_storage
 			; pool_disable_binary_storage

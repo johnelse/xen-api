@@ -115,6 +115,9 @@ val create_new_blob :
   pool:[ `pool ] Ref.t -> name:string -> mime_type:string -> public:bool -> [ `blob ] Ref.t
 val set_ha_host_failures_to_tolerate :
   __context:Context.t -> self:[ `pool ] Ref.t -> value:int64 -> unit
+val ha_assert_can_receive_vm :
+  __context:Context.t -> self:API.ref_pool -> host:API.ref_host ->
+  vm:string -> networks:API.ref_network list -> srs:API.ref_SR list -> unit
 val ha_schedule_plan_recomputation : __context:'a -> unit
 
 (** {2 (Fill in Title!)} *)
