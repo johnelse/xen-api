@@ -960,6 +960,12 @@ let migrate_send'  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
     end
 
 let assert_can_migrate  ~__context ~vm ~dest ~live ~vdi_map ~vif_map ~options =
+  List.iter
+    (fun (vdi, sr) ->
+      debug "CA-191314: VDI %s mapped to SR %s" (Ref.string_of vdi) (Ref.string_of sr)) vdi_map;
+  List.iter
+    (fun (vif, network) ->
+      debug "CA-191314: VIF %s mapped to network %s" (Ref.string_of vif) (Ref.string_of network)) vif_map;
   assert_licensed_storage_motion ~__context ;
 
   let remote = remote_of_dest dest in
