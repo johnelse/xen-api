@@ -359,7 +359,9 @@ module AssertNewVMPreservesHAPlan = Generic.Make(Generic.EncapsulateState(struct
 
 	module State = XapiDb
 
-	let load_input __context (pool, _, _) = setup ~__context pool
+	let load_input __context (pool, _, _) =
+		Printf.printf "----------------------- test ----------------------\n%!";
+		setup ~__context pool
 
 	let extract_output __context (pool, vm, in_db) =
 		let open Db_filter_types in
