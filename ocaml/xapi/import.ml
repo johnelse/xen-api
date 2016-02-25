@@ -254,17 +254,12 @@ let assert_can_live_import __context rpc session_id state vm_record =
 				|> List.map Ref.of_string
 				|> Listext.List.setify
 			in
-			let vm_resources = Agility.VMResources.({
-				status = `Incoming localhost;
-				vm_rec = vm_record;
-				networks;
-				srs;
-			}) in
-			if vm_record.API.vM_ha_restart_priority = Constants.ha_restart
-			then Xapi_ha_vm_failover.assert_new_vm_preserves_ha_plan ~__context vm_resources
-			else
-				Xapi_ha_vm_failover.assert_vm_placement_preserves_ha_plan ~__context
-					~arriving:[localhost, vm_resources] ()
+			Client.Pool.ha_assert_can_receive_vm ~rpc ~session_id
+				~self:(Helpers.get_pool ~__context)
+				~host:localhost
+				~vm:(API.Legacy.To.vM_t vm_record |> Xml.to_string)
+				~networks
+				~srs
 		end
 	in
 
