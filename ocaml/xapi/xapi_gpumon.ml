@@ -19,30 +19,23 @@ open Fun
 open Xstringext
 open Threadext
 
-let service = "/sbin/service"
+let systemctl = "/usr/bin/systemctl"
 let gpumon = "xcp-rrdd-gpumon"
-let pidfile = "/var/run/xcp-rrdd-gpumon.pid"
 
-let get_pid () =
+let is_running () =
 	try
-		let pid =
-			(* TODO: Use String.trim when porting this to OCaml 4.x *)
-			Unixext.string_of_file pidfile
-			|> String.strip String.isspace
-			|> int_of_string
-		in
-		Unix.kill pid 0;
-		Some pid
-	with _ ->
-		None
+		let (_: string * string) = Forkhelpers.execute_command_get_output
+			systemctl ["--quiet"; "is-active"; gpumon] in
+		true
+	with Forkhelpers.Spawn_internal_error _ -> false
 
 let start () =
 	debug "Starting %s" gpumon;
-	ignore (Forkhelpers.execute_command_get_output service [gpumon; "start"])
+	ignore (Forkhelpers.execute_command_get_output systemctl ["start"; gpumon])
 
 let stop () =
 	debug "Stopping %s" gpumon;
-	ignore (Forkhelpers.execute_command_get_output service [gpumon; "stop"])
+	ignore (Forkhelpers.execute_command_get_output systemctl ["stop"; gpumon])
 
 module IntSet = Set.Make(struct type t = int let compare = compare end)
 let registered_threads = ref IntSet.empty
@@ -84,10 +77,10 @@ let with_gpumon_stopped ~f =
 	Mutex.execute m
 		(fun () ->
 			begin
-				match get_pid (), !restart_gpumon with
-				| Some pid, _ -> (restart_gpumon := Some true; stop ())
-				| None, None -> restart_gpumon := Some false
-				| None, _ -> ()
+				match is_running (), !restart_gpumon with
+				| true, _ -> (restart_gpumon := Some true; stop ())
+				| false, None -> restart_gpumon := Some false
+				| false, _ -> ()
 			end;
 			register_thread thread_id);
 	Pervasiveext.finally
