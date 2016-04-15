@@ -494,20 +494,13 @@ module Intel = struct
 			whitelist
 
 	let find_or_create_supported_types ~__context ~pci
-			~is_system_display_device
 			~is_host_display_enabled
 			~is_pci_hidden =
 		let types =
-			if is_system_display_device
-			then begin
-				match is_host_display_enabled, is_pci_hidden with
-				| false, true -> [passthrough_gpu]
-				| true, true -> []
-				| _, false ->
-					(make_vgpu_types ~__context
-						~pci ~whitelist:!Xapi_globs.gvt_g_whitelist)
-			end else
-				passthrough_gpu ::
+			match is_host_display_enabled, is_pci_hidden with
+			| false, true -> [passthrough_gpu]
+			| true, true -> []
+			| _, false ->
 				(make_vgpu_types ~__context
 					~pci ~whitelist:!Xapi_globs.gvt_g_whitelist)
 		in
@@ -530,7 +523,6 @@ let find_or_create_supported_types ~__context ~pci
 	else if vendor_id = Intel.intel_vendor_id
 	then
 		Intel.find_or_create_supported_types ~__context ~pci
-			~is_system_display_device
 			~is_host_display_enabled
 			~is_pci_hidden
 	else begin
