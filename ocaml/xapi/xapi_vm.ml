@@ -201,7 +201,7 @@ let start ~__context ~vm ~start_paused ~force =
 	| [] -> Xapi_xenops.start ~__context ~self:vm start_paused
 	| _ ->
 		Xapi_gpumon.with_gpumon_stopped
-			~f:(fun () -> Xapi_xenops.start ~__context ~self:vm start_paused)
+			(fun () -> Xapi_xenops.start ~__context ~self:vm start_paused)
 
 (** For VM.start_on and VM.resume_on the message forwarding layer should only forward here
     if 'host' = localhost *)
