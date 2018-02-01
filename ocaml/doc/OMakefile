@@ -20,7 +20,8 @@ doc-html-install: doc-html
 	cp *.js *.html *.css *.png $(DESTDIR)$(DOCDIR)/html/xenserver/
 	cp xenserver/* $(DESTDIR)$(DOCDIR)/html/xenserver/
 
-noarch-install: doc-html-install
+noarch-install:
+	echo "removed"
 
 .PHONY: clean
 clean:

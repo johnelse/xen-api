@@ -88,7 +88,7 @@ doc-pdf-install: doc-pdf
 	mkdir -p $(SDK)/docs/pdf
 	cp xenenterpriseapi.pdf $(SDK)/docs/pdf/
 
-noarch-install: doc-pdf-install
+noarch-install:
 
 META: META.in
 	sed 's/@VERSION@/$(PRODUCT_VERSION)/g' < $< > $@

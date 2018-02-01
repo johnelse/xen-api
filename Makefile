@@ -79,7 +79,7 @@ lib-uninstall:
 	omake DESTDIR=$(DESTDIR) lib-uninstall
 
 .PHONY: noarch-install
-noarch-install: doc
+noarch-install:
 	omake noarch-install
 
 .PHONY: clean
