@@ -109,6 +109,7 @@ let () = Printf.ksprintf Jbuild_plugin.V1.send {|
    xapi-xenopsd
    xapi-netdev
    yojson
+   zstd
   ))
   %s)
 )
