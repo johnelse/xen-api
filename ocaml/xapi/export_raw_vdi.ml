@@ -36,19 +36,24 @@ let localhost_handler rpc session_id vdi (req: Http.Request.t) (s: Unix.file_des
          debug "export_raw_vdi task_id = %s; vdi = %s; format = %s; content-type = %s; filename = %s"
            (Ref.string_of task_id) (Ref.string_of vdi) (Importexport.Format.to_string format) content_type filename;
          let copy base_path path s =
-           let headers = Http.http_200_ok ~keep_alive:false () @ [
-               Http.Hdr.task_id ^ ":" ^ (Ref.string_of task_id);
-               Http.Hdr.content_type ^ ":" ^ content_type;
-               Http.Hdr.content_disposition ^ ": attachment; filename=\"" ^ filename ^ "\""
-             ] in
-           Http_svr.headers s headers;
            try
              debug "Copying VDI contents...";
              Vhd_tool_wrapper.send ?relative_to:base_path (Vhd_tool_wrapper.update_task_progress __context)
                "none" (Importexport.Format.to_string format) s path "";
              debug "Copying VDI complete.";
            with Unix.Unix_error(Unix.EIO, _, _) ->
-             raise (Api_errors.Server_error (Api_errors.vdi_io_error, ["Device I/O errors"])) in
+             raise (Api_errors.Server_error (Api_errors.vdi_io_error, ["Device I/O errors"]))
+         in
+         let export base_path path s =
+           let headers = Http.http_200_ok ~keep_alive:false () @ [
+               Http.Hdr.task_id ^ ":" ^ (Ref.string_of task_id);
+               Http.Hdr.content_type ^ ":" ^ content_type;
+               Http.Hdr.content_disposition ^ ": attachment; filename=\"" ^ filename ^ "\""
+             ] in
+           Http_svr.headers s headers;
+
+           copy base_path path s
+         in
          begin
            try
              Sm_fs_ops.with_block_attached_device __context rpc session_id vdi `RO
@@ -56,8 +61,8 @@ let localhost_handler rpc session_id vdi (req: Http.Request.t) (s: Unix.file_des
                   match Importexport.base_vdi_of_req ~__context req with
                   | Some base_vdi ->
                     Sm_fs_ops.with_block_attached_device __context rpc session_id base_vdi `RO
-                      (fun base_path -> copy (Some base_path) path s)
-                  | None -> copy None path s
+                      (fun base_path -> export (Some base_path) path) s
+                  | None -> export None path s
                )
            with e ->
              Backtrace.is_important e;
