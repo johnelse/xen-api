@@ -35,7 +35,7 @@ let localhost_handler rpc session_id vdi (req: Http.Request.t) (s: Unix.file_des
          let content_type = Importexport.Format.content_type format in
          debug "export_raw_vdi task_id = %s; vdi = %s; format = %s; content-type = %s; filename = %s"
            (Ref.string_of task_id) (Ref.string_of vdi) (Importexport.Format.to_string format) content_type filename;
-         let copy base_path path =
+         let copy base_path path s =
            let headers = Http.http_200_ok ~keep_alive:false () @ [
                Http.Hdr.task_id ^ ":" ^ (Ref.string_of task_id);
                Http.Hdr.content_type ^ ":" ^ content_type;
@@ -56,8 +56,8 @@ let localhost_handler rpc session_id vdi (req: Http.Request.t) (s: Unix.file_des
                   match Importexport.base_vdi_of_req ~__context req with
                   | Some base_vdi ->
                     Sm_fs_ops.with_block_attached_device __context rpc session_id base_vdi `RO
-                      (fun base_path -> copy (Some base_path) path)
-                  | None -> copy None path
+                      (fun base_path -> copy (Some base_path) path s)
+                  | None -> copy None path s
                )
            with e ->
              Backtrace.is_important e;
