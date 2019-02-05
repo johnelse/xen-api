@@ -605,15 +605,7 @@ let handler (req: Request.t) s _ =
 
   Xapi_http.assert_credentials_ok "VM.export" ~http_action:"get_export" req s;
 
-  let compression_algorithm =
-    if List.mem_assoc Constants.use_compression req.Request.query
-    then
-      match List.assoc Constants.use_compression req.Request.query with
-      | "true" | "gzip" -> Some CompressionAlgorithm.Gzip
-      | "zstd"          -> Some CompressionAlgorithm.Zstd
-      | _               -> None
-    else None
-  in
+  let compression_algorithm = CompressionAlgorithm.of_req req in
 
   debug "Using compression: %s"
     (match compression_algorithm with
