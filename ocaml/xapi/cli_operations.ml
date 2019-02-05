@@ -3784,7 +3784,7 @@ let export_common fd printer rpc session_id params filename num ?task_uuid compr
             (Ref.string_of exporttask)
             (Ref.string_of (vm.getref ()))
             Constants.use_compression
-            (Importexport.string_of_compression_algorithm compression)
+            (Importexport.CompressionAlgorithm.to_string compression)
             preserve_power_state
             export_snapshots)
          "Export";
@@ -3793,7 +3793,7 @@ let export_common fd printer rpc session_id params filename num ?task_uuid compr
 
 let get_compression_algorithm params =
   if List.mem_assoc "compress" params
-  then Importexport.compression_algorithm_of_string (List.assoc "compress" params)
+  then Importexport.CompressionAlgorithm.of_string (List.assoc "compress" params)
   else None
 
 let vm_export fd printer rpc session_id params =

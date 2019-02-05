@@ -609,17 +609,17 @@ let handler (req: Request.t) s _ =
     if List.mem_assoc Constants.use_compression req.Request.query
     then
       match List.assoc Constants.use_compression req.Request.query with
-      | "true" | "gzip" -> Some Gzip
-      | "zstd"          -> Some Zstd
+      | "true" | "gzip" -> Some CompressionAlgorithm.Gzip
+      | "zstd"          -> Some CompressionAlgorithm.Zstd
       | _               -> None
     else None
   in
 
   debug "Using compression: %s"
     (match compression_algorithm with
-    | Some Gzip -> "Gzip"
-    | Some Zstd -> "Zstd"
-    | None      -> "None");
+    | Some CompressionAlgorithm.Gzip -> "Gzip"
+    | Some CompressionAlgorithm.Zstd -> "Zstd"
+    | None                           -> "None");
   (* Perform the SR reachability check using a fresh context/task because
      we don't want to complete the task in the forwarding case *)
 
@@ -688,9 +688,9 @@ let handler (req: Request.t) s _ =
                        Http_svr.headers s headers;
                        let go fd = export refresh_session __context rpc session_id fd vm_ref preserve_power_state in
                        match compression_algorithm with
-                       | Some Gzip -> Gzip.compress s go
-                       | Some Zstd -> Zstd.compress s go
-                       | None      -> go s
+                       | Some CompressionAlgorithm.Gzip -> Gzip.compress s go
+                       | Some CompressionAlgorithm.Zstd -> Zstd.compress s go
+                       | None                           -> go s
                     )
 
                  (* Exceptions are handled by Xapi_http.with_context *)
