@@ -50,6 +50,14 @@ module CompressionAlgorithm = struct
     | None      -> "false"
     | Some Gzip -> "gzip"
     | Some Zstd -> "zstd"
+
+  let _key = Constants.use_compression
+
+  let of_req (req: Http.Request.t) =
+    let all = req.Http.Request.query @ req.Http.Request.cookie in
+    if List.mem_assoc _key all
+    then of_string (List.assoc _key all)
+    else None
 end
 
 let rpc_of_version x =
