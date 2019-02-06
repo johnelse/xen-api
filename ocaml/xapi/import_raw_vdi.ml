@@ -78,9 +78,15 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                                 [ Http.Hdr.task_id ^ ":" ^ (Ref.string_of task_id);
                                   content_type ] in
                   Http_svr.headers s headers;
-                  if chunked
-                  then Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) "raw" "chunked" s None path "" prezeroed
-                  else Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) (Importexport.Format.to_string format) "none" s req.Request.content_length path "" prezeroed
+                  let receive s =
+                    if chunked
+                    then Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) "raw" "chunked" s None path "" prezeroed
+                    else Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) (Importexport.Format.to_string format) "none" s req.Request.content_length path "" prezeroed
+                  in
+                  match Importexport.CompressionAlgorithm.of_req req with
+                  | None                                        -> receive s
+                  | Some Importexport.CompressionAlgorithm.Gzip -> Gzip.decompress s receive
+                  | Some Importexport.CompressionAlgorithm.Zstd -> Zstd.decompress s receive
                );
              TaskHelper.complete ~__context (Some (API.rpc_of_ref_VDI vdi));
              Some vdi
