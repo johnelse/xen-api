@@ -78,6 +78,7 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                                 [ Http.Hdr.task_id ^ ":" ^ (Ref.string_of task_id);
                                   content_type ] in
                   Http_svr.headers s headers;
+                  debug "content_length = %s" (match req.Request.content_length with Some x -> "Some " ^ (Int64.to_string x) | None -> "None");
                   let receive s =
                     if chunked
                     then Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) "raw" "chunked" s None path "" prezeroed
