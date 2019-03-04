@@ -94,16 +94,22 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
 
                     let feeder pipe_in = finally
                       (fun () ->
+                        debug "import_raw_vdi: starting decompress";
                         decompress pipe_in
                           (fun compressed_in ->
                             Unix.set_close_on_exec compressed_in;
-                            Unixext.copy_file s compressed_in))
+                            debug "import_raw_vdi: starting copy_file";
+                            let _ = Unixext.copy_file s compressed_in in
+                            debug "import_raw_vdi: finished copy_file");
+                        debug "import_raw_vdi: starting decompress")
                       (fun () ->
                         ignore_exn (fun () -> Unix.close pipe_in))
                     in
                     let consumer pipe_out feeder_thread = finally
                       (fun () ->
-                        receive s)
+                        debug "import_raw_vdi: starting receive";
+                        receive s;
+                        debug "import_raw_vdi: finished receive")
                       (fun () ->
                         ignore_exn (fun () -> Unix.close pipe_out);
                         Thread.join feeder_thread)
