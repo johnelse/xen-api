@@ -85,9 +85,33 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                     else Vhd_tool_wrapper.receive (Vhd_tool_wrapper.update_task_progress __context) (Importexport.Format.to_string format) "none" s None path "" prezeroed
                   in
                   match Importexport.CompressionAlgorithm.of_req req with
-                  | None                                        -> receive s
-                  | Some Importexport.CompressionAlgorithm.Gzip -> Gzip.decompress s receive
-                  | Some Importexport.CompressionAlgorithm.Zstd -> Zstd.decompress s receive
+                  | None                       -> receive s
+                  | Some compression_algorithm -> begin
+                    let decompress = match compression_algorithm with
+                    | Importexport.CompressionAlgorithm.Gzip -> Gzip.decompress
+                    | Importexport.CompressionAlgorithm.Zstd -> Zstd.decompress
+                    in
+
+                    let feeder pipe_in = finally
+                      (fun () ->
+                        decompress pipe_in
+                          (fun compressed_in ->
+                            Unix.set_close_on_exec compressed_in;
+                            Unixext.copy_file s compressed_in))
+                      (fun () ->
+                        ignore_exn (fun () -> Unix.close pipe_in))
+                    in
+                    let consumer pipe_out feeder_thread = finally
+                      (fun () ->
+                        receive s)
+                      (fun () ->
+                        ignore_exn (fun () -> Unix.close pipe_out);
+                        Thread.join feeder_thread)
+                    in
+                    let pipe_out, pipe_in = Unix.pipe () in
+                    let feeder_thread = Thread.create feeder pipe_in in
+                    consumer pipe_out feeder_thread
+                  end
                );
              TaskHelper.complete ~__context (Some (API.rpc_of_ref_VDI vdi));
              Some vdi
