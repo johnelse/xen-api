@@ -88,8 +88,8 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                   | None                       -> receive s
                   | Some compression_algorithm -> begin
                     let decompress = match compression_algorithm with
-                    | Importexport.CompressionAlgorithm.Gzip -> Gzip.decompress
-                    | Importexport.CompressionAlgorithm.Zstd -> Zstd.decompress
+                    | Importexport.CompressionAlgorithm.Gzip -> Gzip.decompress_passive
+                    | Importexport.CompressionAlgorithm.Zstd -> Zstd.decompress_passive
                     in
 
                     let feeder pipe_in = finally
