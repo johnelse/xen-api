@@ -103,7 +103,7 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                             debug "import_raw_vdi: finished copy_file");
                         debug "import_raw_vdi: starting decompress")
                       (fun () ->
-                        debug "in feeder finally";
+                        debug "import_raw_vdi: in feeder finally";
                         ignore_exn (fun () -> Unix.close pipe_in))
                     in
                     let consumer pipe_out feeder_thread = finally
@@ -112,7 +112,7 @@ let localhost_handler rpc session_id vdi_opt (req: Request.t) (s: Unix.file_desc
                         receive pipe_out;
                         debug "import_raw_vdi: finished receive")
                       (fun () ->
-                        debug "in consumer finally";
+                        debug "import_raw_vdi: in consumer finally";
                         ignore_exn (fun () -> Unix.close pipe_out);
                         Thread.join feeder_thread)
                     in
