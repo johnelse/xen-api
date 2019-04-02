@@ -55,8 +55,8 @@ let run_vhd_tool progress_cb args s s' path =
                     raise (Api_errors.Server_error (Api_errors.vdi_io_error, ["Device I/O errors"]))
                   end
                ) with
-       | Success(out, _) -> debug "%s" out
-       | Failure(out, e) -> error "vhd-tool output: %s" out; raise e
+       | Success(out, _) -> debug "vhd-tool succeeded - output: %s" out
+       | Failure(out, e) -> error "vhd-tool failed - output: %s" out; raise e
     ) (fun () -> close pipe_read; close pipe_write)
 
 let receive progress_cb format protocol (s: Unix.file_descr) (length: int64 option) (path: string) (prefix: string) (prezeroed: bool) =
