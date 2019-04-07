@@ -52,7 +52,11 @@ let localhost_handler rpc session_id vdi (req: Http.Request.t) (s: Unix.file_des
              ] in
            Http_svr.headers s headers;
 
-           copy base_path path s
+           let open Importexport in
+           match CompressionAlgorithm.of_req req with
+           | None -> copy base_path path s
+           | Some CompressionAlgorithm.Gzip -> Gzip.compress s (copy base_path path)
+           | Some CompressionAlgorithm.Zstd -> Zstd.compress s (copy base_path path)
          in
          begin
            try
